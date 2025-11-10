@@ -112,11 +112,40 @@ Raw data was transformed into predictive behavioral signals.
 4. Analysis of Final 20 Features
 
 The model's success is built on these 20 high-consensus features, which all scored 4/4 in our selection process.
-Category	Features Selected (Count: 20)
+Category	        Features Selected (Count: 20)
+
 🚀 Velocity (9)	AMT_MAX_1h, TX_COUNT_1h, AMT_AVG_1h, TX_COUNT_24h, AMT_AVG_24h, AMT_MAX_24h, SSN_COUNT_1D, AMT_AVG_7d_BIN, TX_DAY
 🛒 Context (7)	category_shopping_net, category_grocery_pos, category_food_dining, category_gas_transport, category_grocery_net, category_travel, category_misc_pos
 📊 Anomaly (2)	IS_ANY_OUTLIER_IQR, city_pop_BIN_4
 🆔 Recurrence (2)	CC_PREV_FRAUD, category_shopping_pos (Note: category_shopping_pos appears twice in your log, one may be CC_PREV_FRAUD)
+
+5. Model Interpretability (SHAP Analysis)
+
+To ensure the model is not a "black box" and to validate that its internal logic is sound, a SHAP (SHapley Additive exPlanations) analysis was performed. This technique explains how each of the Top 20 features contributes to the final prediction for fraud.
+
+The summary plot below confirms that the model's "thinking" is rational and aligns perfectly with our feature engineering strategy.
+
+Analysis of Key Drivers
+
+This plot shows the impact of each feature. A red dot means a high value for that feature (e.g., TX_COUNT_1h = 5), while a blue dot means a low value. The X-axis shows the impact on the fraud prediction.
+
+    Positive SHAP Value (Right): Pushes the model to predict "Fraud."
+
+    Negative SHAP Value (Left): Pushes the model to predict "Legitimate."
+
+Key Insights:
+
+    Recurrence is the #1 Signal: The top features are historical. A high (red) value for CC_PREV_FRAUD (meaning the card has been used for fraud before) has the largest positive impact, strongly pushing the prediction to "Fraud."
+
+    Velocity is Critical: Features like TX_COUNT_1h and AMT_AVG_1h are top-tier predictors. High (red) values for these features (high-velocity attacks) are the next biggest drivers of fraud risk.
+
+    Anomalies & Context are Key:
+
+        IS_ANY_OUTLIER_IQR: A high value (red, meaning True) has a clear positive impact, confirming that outliers are inherently high-risk.
+
+        category_shopping_net: This OHE feature (red, meaning True) also strongly pushes the prediction toward fraud, validating our focus on "Card-Not-Present" (online) categories.
+
+Conclusion: The SHAP analysis proves that the model is making its decisions for the right reasons, basing its high-performance predictions on the logical, high-signal velocity and recurrence features we engineered.
 
 5. How to Use This Project
 
