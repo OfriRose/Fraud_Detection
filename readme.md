@@ -1,4 +1,5 @@
-##Fraud Detection Data Science Project (California 2020)
+Fraud Detection Data Science Project (California 2020)
+
 presentor: Ofri Rozner
 
 This project is an end-to-end data science workflow to build and optimize a machine learning classifier to detect credit card fraud. Using a large-scale, real-world dataset, this project successfully navigates extreme class imbalance, complex data skewness, and high dimensionality to produce a state-of-the-art model with 97.7% Recall and 0.9977 AUC on unseen test data.
@@ -115,8 +116,11 @@ The model's success is built on these 20 high-consensus features, which all scor
 Category	        Features Selected (Count: 20)
 
 🚀 Velocity (9)	AMT_MAX_1h, TX_COUNT_1h, AMT_AVG_1h, TX_COUNT_24h, AMT_AVG_24h, AMT_MAX_24h, SSN_COUNT_1D, AMT_AVG_7d_BIN, TX_DAY
+
 🛒 Context (7)	category_shopping_net, category_grocery_pos, category_food_dining, category_gas_transport, category_grocery_net, category_travel, category_misc_pos
+
 📊 Anomaly (2)	IS_ANY_OUTLIER_IQR, city_pop_BIN_4
+
 🆔 Recurrence (2)	CC_PREV_FRAUD, category_shopping_pos (Note: category_shopping_pos appears twice in your log, one may be CC_PREV_FRAUD)
 
 5. Model Interpretability (SHAP Analysis)
