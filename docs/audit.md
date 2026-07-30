@@ -112,10 +112,13 @@ Each removed feature was reassessed:
 | Global `qcut` bins and global IQR flag | Keep removed | Their cut points were learned before splitting. The current pipeline learns clipping bounds from training only, and tree models do not require quantile bins. |
 | `ZIP_FRAUD_RATE` | Do not restore | It was claimed but not implemented; a valid version would also need label-availability rules and train-only smoothing. |
 | Distance and amount-versus-history | Keep corrected replacements | The current pipeline already provides distance and amount versus a strict-past card mean without global leakage. |
-| 1-hour/24-hour/7-day velocity counts and amounts | Eligible for a future validation-only experiment | These are legitimate behavioral ideas, but the legacy rolling/shift implementation was incorrect. They should be rebuilt with strict-past, equal-timestamp-safe windows and accepted only if a preregistered validation comparison improves the chosen objective. |
+| 1-hour/24-hour/7-day velocity counts and amounts | Restored with corrected semantics | A validation-only ablation passed the predefined acceptance rule. Version 1.1.0 uses strict-past, equal-timestamp-safe transaction counts, amount maxima, and amount means over `[timestamp - window, timestamp)`. |
 
 No feature was restored merely because the file is on Kaggle. That would trade
 an honest temporal experiment for a stronger-looking but less credible résumé
-metric. The velocity family remains the only technically justified enhancement
-candidate; it is documented as future work rather than tuned after seeing the
-final test period.
+metric. Velocity was tested without inspecting the final test period. Against
+the same configured XGBoost model and seed, it raised validation PR-AUC from
+0.901996 to 0.979889 and reduced validation scenario cost from $94,100 to
+$18,375. This passed the predefined requirements of at least 0.001 absolute
+PR-AUC improvement and non-increasing validation cost, so the corrected family
+was incorporated before the version 1.1.0 test evaluation.

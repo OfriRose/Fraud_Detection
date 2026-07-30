@@ -15,9 +15,9 @@ period was not used for preprocessing, model selection, or threshold selection.
 
 | model_name           |   validation_pr_auc |   validation_precision |   validation_recall |   validation_review_rate |   validation_estimated_cost |   selected_threshold |
 |:---------------------|--------------------:|-----------------------:|--------------------:|-------------------------:|----------------------------:|---------------------:|
-| xgboost_configured   |            0.901996 |               0.239041 |            0.928763 |                 0.024027 |                94100.000000 |             0.786626 |
-| xgboost_conservative |            0.867598 |               0.215916 |            0.916979 |                 0.026263 |               108585.000000 |             0.796653 |
-| logistic_regression  |            0.606089 |               0.110539 |            0.839314 |                 0.046955 |               213045.000000 |             0.936015 |
+| xgboost_configured   |            0.979889 |               0.524418 |            0.989288 |                 0.011666 |                18375.000000 |             0.699160 |
+| xgboost_conservative |            0.967554 |               0.423748 |            0.988216 |                 0.014422 |                23545.000000 |             0.680505 |
+| logistic_regression  |            0.634782 |               0.224244 |            0.937333 |                 0.025849 |                88770.000000 |             0.863148 |
 | prevalence_baseline  |            0.006184 |               0.000000 |            0.000000 |                 0.000000 |               933500.000000 |             0.005997 |
 
 Champion selected by validation PR-AUC: `xgboost_configured`.
@@ -26,14 +26,14 @@ Champion selected by validation PR-AUC: `xgboost_configured`.
 
 | Metric | Validation |
 |---|---:|
-| PR-AUC | 0.901996 |
-| ROC-AUC | 0.993430 |
-| Precision | 0.239041 |
-| Recall | 0.928763 |
-| False positives | 5,520 |
-| False negatives | 133 |
-| Review rate | 0.024027 |
-| Estimated cost | $94,100.00 |
+| PR-AUC | 0.979889 |
+| ROC-AUC | 0.999229 |
+| Precision | 0.524418 |
+| Recall | 0.989288 |
+| False positives | 1,675 |
+| False negatives | 20 |
+| Review rate | 0.011666 |
+| Estimated cost | $18,375.00 |
 
 The threshold was selected on validation data by minimizing
 `false negatives × $500.00 + false positives × $5.00`
@@ -43,19 +43,19 @@ while reviewing at most 5.0% of transactions.
 
 | Metric | Test |
 |---|---:|
-| PR-AUC | 0.779840 |
-| ROC-AUC | 0.976072 |
-| Precision | 0.027752 |
-| Recall | 0.946112 |
-| True positives / fraud detected | 1,387 |
-| False negatives / fraud missed | 79 |
-| False positives / legitimate flagged | 48,592 |
-| True negatives | 401,079 |
-| Review rate | 0.110785 |
-| Estimated cost | $282,460.00 |
+| PR-AUC | 0.954273 |
+| ROC-AUC | 0.999266 |
+| Precision | 0.181886 |
+| Recall | 0.991814 |
+| True positives / fraud detected | 1,454 |
+| False negatives / fraud missed | 12 |
+| False positives / legitimate flagged | 6,540 |
+| True negatives | 443,131 |
+| Review rate | 0.017720 |
+| Estimated cost | $38,700.00 |
 
-Precision 95% Wilson interval: [0.0263474661455724, 0.029228435058629265].
-Recall 95% Wilson interval: [0.9333438973584797, 0.9565479968662586].
+Precision 95% Wilson interval: [0.17358370363460976, 0.1904947134999622].
+Recall 95% Wilson interval: [0.9857468235828197, 0.9953113656160124].
 
 Target-derived history enabled in the model: `False`. The
 corrected `CC_PREV_FRAUD` and fraud-rate features are generated and regression

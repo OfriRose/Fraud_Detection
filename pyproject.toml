@@ -1,6 +1,6 @@
 [project]
 name = "fraud-detection"
-version = "1.0.0"
+version = "1.1.0"
 description = "Leakage-safe, temporally validated credit-card fraud detection."
 authors = [{ name = "Fraud Detection Contributors" }]
 readme = "readme.md"

@@ -32,19 +32,21 @@ Use wording such as:
 
 > Rebuilt a fraud-detection study around strict-past behavioral features,
 > train-only preprocessing, chronological validation, validation-locked
-> thresholding, and reproducible pipeline artifacts. The latest-period test
-> exposed substantial category drift and alert-capacity risk that a random
-> split had hidden.
+> thresholding, and reproducible pipeline artifacts. A validation-only
+> ablation restored corrected velocity features and improved latest-period
+> performance, while substantial category drift still limits deployment
+> claims.
 
 If exact results are appropriate, label them as the corrected CA/2020
 experiment:
 
-- Validation PR-AUC 0.9020; validation precision 23.90% and recall 92.88% at
+- Validation PR-AUC 0.9799; validation precision 52.44% and recall 98.93% at
   the validation-locked threshold.
-- Test PR-AUC 0.7798; test precision 2.78% and recall 94.61%.
-- Test confusion counts: TP 1,387, FN 79, FP 48,592, TN 401,079.
-- Test review load 11.08%, which exceeds the 5% validation capacity target and
-  is a deployment blocker rather than a success claim.
+- Test PR-AUC 0.9543; test precision 18.19% and recall 99.18%.
+- Test confusion counts: TP 1,454, FN 12, FP 6,540, TN 443,131.
+- Test review load 1.77%, below the 5% validation capacity target. This does
+  not establish production readiness because evaluation covers one state and
+  year from a dataset with undocumented collection or simulation methodology.
 
 Do not call the model production-ready or describe the cost scenario as
 realized savings.

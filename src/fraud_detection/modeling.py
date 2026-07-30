@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 
 from fraud_detection.config import TrainingConfig, XGBoostConfig
+from fraud_detection.features import VELOCITY_FEATURE_COLUMNS
 from fraud_detection.preprocessing import build_pipeline
 
 BASE_NUMERICAL_FEATURES = (
@@ -31,6 +32,7 @@ BASE_NUMERICAL_FEATURES = (
     "TIME_SINCE_LAST_TX",
     "IS_FIRST_CARD_TX",
     "AMT_VS_PREV_MEAN",
+    *VELOCITY_FEATURE_COLUMNS,
 )
 TARGET_HISTORY_FEATURES = ("CC_PREV_FRAUD", "CC_HIST_FRAUD_RATE")
 CATEGORICAL_FEATURES = ("category", "profile")

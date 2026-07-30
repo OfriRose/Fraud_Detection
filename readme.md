@@ -24,10 +24,11 @@ The project now demonstrates:
 - clear communication of deployment risks, data limitations, and unsuccessful
   findings.
 
-The main lesson is that high offline metrics are not enough. The latest-period
-test retained high fraud recall, but severe drift caused precision and review
-capacity to deteriorate. That result is treated as a deployment warning, not
-hidden as an inconvenient outcome.
+The main lesson is that high offline metrics are not enough. Corrected
+strict-past velocity features improved both validation and latest-period test
+performance, but precision still fell materially between those periods as
+fraud prevalence and category mix shifted. That result remains a monitoring
+and external-validation warning rather than a production-readiness claim.
 
 The original notebook experiment used a random row split after full-data
 preprocessing and future-inclusive feature engineering. Its metrics are not
@@ -97,6 +98,10 @@ The authoritative implementation is under `src/fraud_detection/`.
 - Previous transaction count, cumulative amount, mean, sample standard
   deviation, fraud count/rate, and time since prior transaction use strictly
   earlier timestamps.
+- Card transaction counts, maximum amounts, and mean amounts over the previous
+  1 hour, 24 hours, and 7 days use `[timestamp - window, timestamp)` boundaries.
+  A validation-only ablation accepted this corrected replacement for the
+  legacy rolling features before version 1.1.0 evaluated the test period.
 - First-card-event historical values are explicitly zero and accompanied by
   `IS_FIRST_CARD_TX`.
 - `CC_BIN` extracts the first six digits per card; invalid, short, and missing
@@ -122,12 +127,12 @@ Models are compared on the same temporal validation period.
 | Candidate | Validation PR-AUC | Precision | Recall | Review rate | Estimated cost |
 |---|---:|---:|---:|---:|---:|
 | Prevalence baseline | 0.006184 | 0.0000 | 0.0000 | 0.0000% | $933,500 |
-| Logistic regression | 0.606089 | 0.1105 | 0.8393 | 4.6955% | $213,045 |
-| Conservative XGBoost | 0.867598 | 0.2159 | 0.9170 | 2.6263% | $108,585 |
-| Configured XGBoost | **0.901996** | **0.2390** | **0.9288** | **2.4027%** | **$94,100** |
+| Logistic regression | 0.634782 | 0.2242 | 0.9373 | 2.5849% | $88,770 |
+| Conservative XGBoost | 0.967554 | 0.4237 | 0.9882 | 1.4422% | $23,545 |
+| Configured XGBoost | **0.979889** | **0.5244** | **0.9893** | **1.1666%** | **$18,375** |
 
 The configured XGBoost candidate was selected by validation PR-AUC. Validation
-locked the operating threshold at `0.7866255641` by minimizing the stated cost
+locked the operating threshold at `0.6991600990` by minimizing the stated cost
 under the 5% review constraint.
 
 ## Final test result
@@ -136,24 +141,24 @@ The selected pipeline and locked threshold were applied to the latest period:
 
 | Metric | Test result |
 |---|---:|
-| PR-AUC | 0.779840 |
-| ROC-AUC (secondary) | 0.976072 |
-| Precision | 0.027752 |
-| Recall | 0.946112 |
-| Fraud detected (TP) | 1,387 |
-| Fraud missed (FN) | 79 |
-| Legitimate transactions flagged (FP) | 48,592 |
-| Legitimate transactions cleared (TN) | 401,079 |
-| Review rate | 11.0785% |
-| Estimated scenario cost | $282,460 |
+| PR-AUC | 0.954273 |
+| ROC-AUC (secondary) | 0.999266 |
+| Precision | 0.181886 |
+| Recall | 0.991814 |
+| Fraud detected (TP) | 1,454 |
+| Fraud missed (FN) | 12 |
+| Legitimate transactions flagged (FP) | 6,540 |
+| Legitimate transactions cleared (TN) | 443,131 |
+| Review rate | 1.7720% |
+| Estimated scenario cost | $38,700 |
 
-Precision 95% Wilson interval: 2.63%–2.92%. Recall 95% Wilson interval:
-93.33%–95.65%.
+Precision 95% Wilson interval: 17.36%–19.05%. Recall 95% Wilson interval:
+98.57%–99.53%.
 
-This is materially weaker operational performance than validation. Although
-recall remains high, precision falls to 2.78% and the locked threshold exceeds
-the intended 5% review capacity on test. The threshold was not retuned using
-test data. November review load is 9.54%; December rises to 11.85%.
+Precision is materially weaker than validation, but recall remains high and
+the locked threshold stays within the intended 5% review capacity on test. The
+threshold was not retuned using test data. November review load is 2.05%;
+December falls to 1.63%.
 
 The main observed drift signals include:
 
@@ -162,6 +167,9 @@ The main observed drift signals include:
   0.9590.
 - Transaction month and accumulated card-history features shift substantially
   by construction and should be monitored carefully.
+- The 24-hour and 7-day transaction counts also rise over time, so their
+  distributions require monitoring even though the short-window family
+  generalized well in this test.
 
 See `reports/evaluation.md`, `reports/test_monthly_metrics.csv`, and
 `reports/train_test_drift.csv` for the generated details.
@@ -218,7 +226,7 @@ import pandas as pd
 
 from fraud_detection.inference import load_artifact, score_transactions
 
-artifact = load_artifact("artifacts/fraud_pipeline_v1.0.0.joblib")
+artifact = load_artifact("artifacts/fraud_pipeline_v1.1.0.joblib")
 transaction = pd.DataFrame(
     [
         {
@@ -262,7 +270,7 @@ docs/                    Original audit and legacy-claim reconciliation
 
 Generated, present artifacts:
 
-- `artifacts/fraud_pipeline_v1.0.0.joblib`
+- `artifacts/fraud_pipeline_v1.1.0.joblib`
 - `artifacts/model_metadata.json`
 - `reports/metrics.json`
 - `reports/model_comparison.csv`

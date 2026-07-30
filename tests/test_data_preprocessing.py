@@ -6,7 +6,7 @@ import pytest
 from sklearn.linear_model import LogisticRegression
 
 from fraud_detection.data import prepare_transactions
-from fraud_detection.features import build_features
+from fraud_detection.features import VELOCITY_FEATURE_COLUMNS, build_features
 from fraud_detection.modeling import get_feature_schema, select_model_matrix
 from fraud_detection.preprocessing import build_pipeline
 
@@ -46,6 +46,7 @@ def test_data_preparation_normalizes_schema_and_target_is_never_modeled() -> Non
     matrix = select_model_matrix(build_features(prepared), schema)
 
     assert matrix.columns.tolist() == list(schema.model_features)
+    assert set(VELOCITY_FEATURE_COLUMNS).issubset(schema.model_features)
     assert "is_fraud" not in matrix.columns
     assert "CC_PREV_FRAUD" not in matrix.columns
     assert "CC_HIST_FRAUD_RATE" not in matrix.columns

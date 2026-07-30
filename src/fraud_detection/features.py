@@ -8,6 +8,7 @@ as one bucket, so their amounts and labels cannot leak into one another.
 from __future__ import annotations
 
 import numbers
+from collections import deque
 from typing import Final
 
 import numpy as np
@@ -24,6 +25,20 @@ REQUIRED_COLUMNS: Final[tuple[str, ...]] = (
     "merch_long",
 )
 
+VELOCITY_WINDOWS: Final[tuple[tuple[str, pd.Timedelta], ...]] = (
+    ("1H", pd.Timedelta(hours=1)),
+    ("24H", pd.Timedelta(hours=24)),
+    ("7D", pd.Timedelta(days=7)),
+)
+VELOCITY_FEATURE_COLUMNS: Final[tuple[str, ...]] = tuple(
+    feature
+    for suffix, _ in VELOCITY_WINDOWS
+    for feature in (
+        f"TX_COUNT_{suffix}",
+        f"AMT_MAX_{suffix}",
+        f"AMT_MEAN_{suffix}",
+    )
+)
 ENGINEERED_FEATURE_COLUMNS: Final[tuple[str, ...]] = (
     "CC_BIN",
     "TX_HOUR",
@@ -41,6 +56,7 @@ ENGINEERED_FEATURE_COLUMNS: Final[tuple[str, ...]] = (
     "TIME_SINCE_LAST_TX",
     "IS_FIRST_CARD_TX",
     "AMT_VS_PREV_MEAN",
+    *VELOCITY_FEATURE_COLUMNS,
 )
 
 _NUMERIC_FEATURE_COLUMNS: Final[tuple[str, ...]] = tuple(
@@ -55,8 +71,69 @@ _HISTORY_ZERO_AT_COLD_START: Final[tuple[str, ...]] = (
     "CC_HIST_FRAUD_RATE",
     "TIME_SINCE_LAST_TX",
     "AMT_VS_PREV_MEAN",
+    *VELOCITY_FEATURE_COLUMNS,
 )
 _EARTH_RADIUS_KM: Final[float] = 6_371.0088
+
+
+def _add_strict_past_velocity_features(buckets: pd.DataFrame) -> None:
+    """Add per-card window aggregates over ``[timestamp - window, timestamp)``."""
+
+    bucket_count = buckets["_fd_bucket_count"].to_numpy(dtype=np.int64)
+    bucket_amount = buckets["_fd_bucket_amount"].to_numpy(dtype=np.float64)
+    bucket_max = buckets["_fd_bucket_max"].to_numpy(dtype=np.float64)
+
+    for suffix, window in VELOCITY_WINDOWS:
+        counts = np.zeros(len(buckets), dtype=np.int64)
+        means = np.zeros(len(buckets), dtype=np.float64)
+        maxima = np.zeros(len(buckets), dtype=np.float64)
+        window_ns = int(window.value)
+
+        for positions in buckets.groupby(
+            "_fd_card",
+            sort=False,
+            observed=True,
+            dropna=False,
+        ).indices.values():
+            positions = np.asarray(positions, dtype=np.int64)
+            timestamps = (
+                buckets.iloc[positions]["_fd_timestamp"].astype("int64").to_numpy(dtype=np.int64)
+            )
+            local_count = bucket_count[positions]
+            local_amount = bucket_amount[positions]
+            left = np.searchsorted(timestamps, timestamps - window_ns, side="left")
+            right = np.arange(len(positions), dtype=np.int64)
+
+            count_prefix = np.concatenate(([0], np.cumsum(local_count, dtype=np.int64)))
+            amount_prefix = np.concatenate(([0.0], np.cumsum(local_amount, dtype=np.float64)))
+            window_counts = count_prefix[right] - count_prefix[left]
+            window_amounts = amount_prefix[right] - amount_prefix[left]
+            counts[positions] = window_counts
+            means[positions] = np.divide(
+                window_amounts,
+                window_counts,
+                out=np.zeros(len(positions), dtype=np.float64),
+                where=window_counts > 0,
+            )
+
+            candidates: deque[int] = deque()
+            for local_position, timestamp in enumerate(timestamps):
+                lower_bound = timestamp - window_ns
+                while candidates and timestamps[candidates[0]] < lower_bound:
+                    candidates.popleft()
+                if candidates:
+                    maxima[positions[local_position]] = bucket_max[positions[candidates[0]]]
+                while (
+                    candidates
+                    and bucket_max[positions[candidates[-1]]]
+                    <= bucket_max[positions[local_position]]
+                ):
+                    candidates.pop()
+                candidates.append(local_position)
+
+        buckets[f"TX_COUNT_{suffix}"] = counts
+        buckets[f"AMT_MAX_{suffix}"] = maxima
+        buckets[f"AMT_MEAN_{suffix}"] = means
 
 
 def _stringify_card_values(values: pd.Series) -> pd.Series:
@@ -339,7 +416,12 @@ def build_features(
     )
 
     if transactions.empty:
-        integer_history = {"PREV_TX_COUNT", "CC_PREV_FRAUD", "IS_FIRST_CARD_TX"}
+        integer_history = {
+            "PREV_TX_COUNT",
+            "CC_PREV_FRAUD",
+            "IS_FIRST_CARD_TX",
+            *(feature for feature in VELOCITY_FEATURE_COLUMNS if feature.startswith("TX_COUNT_")),
+        }
         for column in (
             "PREV_TX_COUNT",
             "PREV_CUMULATIVE_AMT",
@@ -350,6 +432,7 @@ def build_features(
             "TIME_SINCE_LAST_TX",
             "IS_FIRST_CARD_TX",
             "AMT_VS_PREV_MEAN",
+            *VELOCITY_FEATURE_COLUMNS,
         ):
             dtype = np.int64 if column in integer_history else np.float64
             result[column] = np.array([], dtype=dtype)
@@ -389,6 +472,7 @@ def build_features(
             _fd_timestamp=("_fd_timestamp", "first"),
             _fd_bucket_count=("_fd_amount", "size"),
             _fd_bucket_amount=("_fd_amount", "sum"),
+            _fd_bucket_max=("_fd_amount", "max"),
             _fd_bucket_amount_squared=("_fd_amount_squared", "sum"),
             _fd_bucket_fraud=("_fd_target", "sum"),
         )
@@ -457,6 +541,7 @@ def build_features(
     buckets["_fd_historical_fraud_rate"] = historical_fraud_rate
     buckets["_fd_time_since_previous"] = time_since_previous
     buckets["_fd_is_first"] = (previous_count == 0).astype(np.int8)
+    _add_strict_past_velocity_features(buckets)
 
     bucket_lookup = buckets.set_index("_fd_bucket_id")
     bucket_feature_map = {
@@ -468,6 +553,7 @@ def build_features(
         "CC_HIST_FRAUD_RATE": "_fd_historical_fraud_rate",
         "TIME_SINCE_LAST_TX": "_fd_time_since_previous",
         "IS_FIRST_CARD_TX": "_fd_is_first",
+        **{feature: feature for feature in VELOCITY_FEATURE_COLUMNS},
     }
     for public_name, bucket_name in bucket_feature_map.items():
         work[public_name] = work["_fd_bucket_id"].map(bucket_lookup[bucket_name])
@@ -482,7 +568,12 @@ def build_features(
     )
 
     restored = work.sort_values("_fd_position", kind="mergesort")
-    integer_history = {"PREV_TX_COUNT", "CC_PREV_FRAUD", "IS_FIRST_CARD_TX"}
+    integer_history = {
+        "PREV_TX_COUNT",
+        "CC_PREV_FRAUD",
+        "IS_FIRST_CARD_TX",
+        *(feature for feature in VELOCITY_FEATURE_COLUMNS if feature.startswith("TX_COUNT_")),
+    }
     for feature_name in (*bucket_feature_map, "AMT_VS_PREV_MEAN"):
         dtype = np.int64 if feature_name in integer_history else np.float64
         result[feature_name] = restored[feature_name].to_numpy(dtype=dtype)
@@ -496,6 +587,7 @@ def build_features(
 __all__ = [
     "ENGINEERED_FEATURE_COLUMNS",
     "REQUIRED_COLUMNS",
+    "VELOCITY_FEATURE_COLUMNS",
     "build_features",
     "extract_cc_bin",
 ]

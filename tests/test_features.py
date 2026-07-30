@@ -7,6 +7,7 @@ import pytest
 
 from fraud_detection.features import (
     ENGINEERED_FEATURE_COLUMNS,
+    VELOCITY_FEATURE_COLUMNS,
     build_features,
     extract_cc_bin,
 )
@@ -156,6 +157,34 @@ def test_equal_timestamp_transactions_do_not_see_each_other() -> None:
     assert second_bucket["TIME_SINCE_LAST_TX"].tolist() == [3600.0, 3600.0]
     assert second_bucket["IS_FIRST_CARD_TX"].tolist() == [0, 0]
     assert second_bucket["AMT_VS_PREV_MEAN"].tolist() == [1.0, 5.0]
+
+
+def test_velocity_windows_are_strict_past_equal_time_safe_and_boundary_inclusive() -> None:
+    raw = _transactions(
+        cards=[4111111111111111] * 5,
+        timestamps=[
+            "2020-01-01 00:00:00",
+            "2020-01-01 00:00:00",
+            "2020-01-01 00:30:00",
+            "2020-01-01 01:00:00",
+            "2020-01-02 01:00:00",
+        ],
+        amounts=[10, 30, 20, 40, 100],
+        fraud=[0, 0, 0, 0, 0],
+    )
+
+    featured = build_features(raw)
+
+    assert featured["TX_COUNT_1H"].tolist() == [0, 0, 2, 3, 0]
+    assert featured["AMT_MAX_1H"].tolist() == [0.0, 0.0, 30.0, 30.0, 0.0]
+    assert featured["AMT_MEAN_1H"].tolist() == [0.0, 0.0, 20.0, 20.0, 0.0]
+    assert featured["TX_COUNT_24H"].tolist() == [0, 0, 2, 3, 1]
+    assert featured["AMT_MAX_24H"].tolist() == [0.0, 0.0, 30.0, 30.0, 40.0]
+    assert featured["AMT_MEAN_24H"].tolist() == [0.0, 0.0, 20.0, 20.0, 40.0]
+    assert featured.loc[4, "TX_COUNT_7D"] == 4
+    assert featured.loc[4, "AMT_MAX_7D"] == 40.0
+    assert featured.loc[4, "AMT_MEAN_7D"] == 25.0
+    assert np.isfinite(featured.loc[:, VELOCITY_FEATURE_COLUMNS].to_numpy()).all()
 
 
 def test_mutating_a_future_transaction_cannot_change_earlier_features() -> None:
