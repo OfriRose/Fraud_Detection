@@ -1,0 +1,62 @@
+# Python bytecode and build products
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments and Poetry-local state
+.venv/
+venv/
+env/
+.poetry/
+
+# Test, coverage, lint, and type-check caches
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
+
+# Source and intermediate datasets (retain directory placeholders)
+/credit_card_fraud.csv
+/prepped_data.pkl
+/data/raw/*
+/data/interim/*
+/data/processed/*
+!/data/raw/.gitkeep
+!/data/interim/.gitkeep
+!/data/processed/.gitkeep
+
+# Artifacts and reports are intentionally not ignored: selected, documented
+# experiment outputs may be versioned.
+
+# Local coursework-era material with invalid legacy results. These files stay
+# available to the author for historical reference but are not portfolio
+# deliverables.
+/Presentation_Ofri Rozner.pptx
+/summary.xlsx
+/final_xgb_model_production.json
+/[[]1[]]Data_Cleaning.ipynb

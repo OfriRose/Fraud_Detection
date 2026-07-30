@@ -1,0 +1,45 @@
+[project]
+seed = 42
+model_version = "1.0.0"
+
+[data]
+input_path = "prepped_data.pkl"
+state = "CA"
+year = 2020
+include_target_history = false
+target_column = "is_fraud"
+timestamp_column = "trans_timestamp"
+entity_column = "cc_num"
+train_end = "2020-08-31 23:59:59"
+validation_end = "2020-10-31 23:59:59"
+
+[paths]
+artifact_dir = "artifacts"
+report_dir = "reports"
+model_filename = "fraud_pipeline_v1.0.0.joblib"
+
+[threshold]
+false_negative_cost = 500.0
+false_positive_cost = 5.0
+max_review_rate = 0.05
+
+[models.logistic_regression]
+solver = "saga"
+penalty = "l2"
+C = 1.0
+class_weight = "balanced"
+max_iter = 500
+
+[models.xgboost]
+objective = "binary:logistic"
+eval_metric = "aucpr"
+n_estimators = 250
+learning_rate = 0.05
+max_depth = 4
+min_child_weight = 5.0
+subsample = 0.8
+colsample_bytree = 0.8
+reg_alpha = 0.1
+reg_lambda = 2.0
+tree_method = "hist"
+n_jobs = -1
