@@ -1,160 +1,285 @@
-Fraud Detection Data Science Project (California 2020)
-
-presentor: Ofri Rozner
-
-This project is an end-to-end data science workflow to build and optimize a machine learning classifier to detect credit card fraud. Using a large-scale, real-world dataset, this project successfully navigates extreme class imbalance, complex data skewness, and high dimensionality to produce a state-of-the-art model with 97.7% Recall and 0.9977 AUC on unseen test data.
-
-1. Project Overview
-
-Objective
-
-The primary goal was to build a model that minimizes financial loss by maximizing the detection of fraudulent transactions (Recall), while maintaining a manageable rate of false positives (Precision) to reduce operational costs for fraud investigators.
-
-The Data & Core Challenge: A Needle in a Haystack
-
-    Data Scoping: The project was scoped to 2020 data from California, providing a dense, 2M+ transaction dataset to analyze the unique behavioral shifts caused by the COVID-19 pandemic (e.g., a massive move to online, "Card-Not-Present" transactions).
-    California was chosen for having the biggest absolute number of fraud cases in the dataset
-
-    The Challenge: Exploratory Data Analysis (EDA) revealed a severe class imbalance of 0.54%. This means for every 185 legitimate transactions, there was only 1 fraudulent case. This imbalance made standard metrics like Accuracy useless and required specialized techniques.
-
-2. Final Model Performance (Test Set)
-
-The final, tuned  model was evaluated on the completely unseen Test Set (15% of the data). The performance confirms the model is highly accurate, robust, and not overfit.
-Metric	Result	Interpretation
-AUC	0.9977	Exceptional. Near-perfect ability to distinguish fraud from non-fraud.
-Recall	0.9767 (97.7%)	Goal Achieved. The model successfully catches 97.7% of all fraud.
-Precision	0.5720 (57.2%)	Operationally Efficient. Over 1 in 2 alerts are genuine fraud, a strong signal-to-noise ratio.
-F1-Score	0.7215	A robust and well-balanced score.
-
-3. The 6-Stage Workflow
-
-This project was structured across six key notebooks, representing a complete data science pipeline:
-
-[1] Data_Prep.ipynb
-
-    Loaded the raw dataset (2M+ rows).
-
-    Filtered for the 'California' (CA) state scope.
-    
-    Normalized string columns.
-
-    Handled initial data types, converting trans_date, trans_time, and dob to datetime objects.
-
-    Handled high cardinallty categorical columns ('job', 'city') by scoping on the 20 most popular categories
-
-    Dropped obvious PII (first, last, street) 
-
-[2] EDA.ipynb
-
-    Key Insight: Discovered the 0.54% class imbalance.
-
-    Key Insight: Identified extreme right-skew in numerical features like amt and city_pop.
-
-    Key Insight: Found that fraud risk was highly concentrated in specific contexts, such as late-night hours (TX_HOUR_1 to 3) and specific categories (category_shopping_net).
-
-[3] Data_Cleanse.ipynb
-
-    Challenge: Standard Z-score outlier detection failed due to extreme skew (flagging 90%+ of data).
-
-    Solution: Implemented the robust Interquartile Range (IQR) method to identify true outliers.
-
-    Action: Outliers were "capped" at the 1.5*IQR boundary. This neutralized their skewing effect without deleting the rare fraud samples.
-
-[4] Feature_Engineering.ipynb
-
-Raw data was transformed into predictive behavioral signals.
-
-    Velocity Features: TX_COUNT_1h, AMT_AVG_1h, TIME_SINCE_LAST_TX, SSN_COUNT_1D.
-
-    Recurrence Features: CC_PREV_FRAUD, ACCT_PREV_FRAUD. 
-
-    Risk Scores: ZIP_FRAUD_RATE, AGE_RISK_SCORE (from profile).
-
-    Anomaly Flags: IS_ANY_OUTLIER_IQR, DIST_HOME_MERCH_LOG.
-
-    Transformation:
-
-        Quantile Binning (pd.qcut): Used to handle the non-linear risk of skewed features like amt, city_pop, and TIME_SINCE_LAST_TX.
-
-        One-Hot Encoding (OHE): Applied to all final categorical features.
-
-        Standardization (StandardScaler): Scaled the entire numerical feature matrix.
-
-[5] Model Selection and Fine Tuning.ipynb
-
-    Feature Selection:
-
-        Challenge: High dimensionality (1000+ features after OHE) and slow model runtimes.
-
-        Method: A Consensus Feature Selection (using Lasso, Ridge, RandomForest, GBM) was run to find the most universally predictive features.
-
-        Result: Filtered the data to the Top 20 most robust features, all of which were selected by at least 4 out of 5 models.
-
-        problem: Lasso and ridge did not converge after 5000 iterations, leaving noise in the selection. The ensemble method helped overcome this problem and the model evaluation prooved the selected featrs were good regardless, it was decided not to re-run the selection.
-
-    Model Selection & Tuning:
-
-        Data Split: The data was split into 70/15/15 (Train/Validation/Test) using stratify=y to preserve the 0.54% fraud ratio in all sets.
-
-        Baseline: A 6-model comparison (XGBoost, RandomForest, etc.) was run. All models used class weighting (scale_pos_weight or class_weight='balanced') to overcome the imbalance.
-
-        Result: XGBoost was selected as the champion model (highest AUC and best Recall/Precision balance).
-
-        Challenge: RandomizedSearchCV (the scikit-learn wrapper) had version conflicts with XGBoost (AttributeError).
-
-        Solution: Pivoted to a robust Manual Fine-Tuning loop, testing 3 key parameter sets on the Validation (Dev) set. This successfully identified the optimal hyperparameters.
-
-[6] Model Evaluation.ipynb
-
-    Final Step: The single best model (XGBoost with max_depth=8, learning_rate=0.05) was trained on the full Training set.
-
-    Final Proof: The model was evaluated one time on the unseen Test Set, producing the final, unbiased metrics seen in Section 2.
-
-4. Analysis of Final 20 Features
-
-The model's success is built on these 20 high-consensus features, which all scored 4/4 in our selection process.
-Category	        Features Selected (Count: 20)
-
-🚀 Velocity (9)	AMT_MAX_1h, TX_COUNT_1h, AMT_AVG_1h, TX_COUNT_24h, AMT_AVG_24h, AMT_MAX_24h, SSN_COUNT_1D, AMT_AVG_7d_BIN, TX_DAY
-
-🛒 Context (7)	category_shopping_net, category_grocery_pos, category_food_dining, category_gas_transport, category_grocery_net, category_travel, category_misc_pos
-
-📊 Anomaly (2)	IS_ANY_OUTLIER_IQR, city_pop_BIN_4
-
-🆔 Recurrence (2)	CC_PREV_FRAUD, category_shopping_pos (Note: category_shopping_pos appears twice in your log, one may be CC_PREV_FRAUD)
-
-5. Model Interpretability (SHAP Analysis)
-
-To ensure the model is not a "black box" and to validate that its internal logic is sound, a SHAP (SHapley Additive exPlanations) analysis was performed. This technique explains how each of the Top 20 features contributes to the final prediction for fraud.
-
-The summary plot below confirms that the model's "thinking" is rational and aligns perfectly with our feature engineering strategy.
-
-Analysis of Key Drivers
-
-This plot shows the impact of each feature. A red dot means a high value for that feature (e.g., TX_COUNT_1h = 5), while a blue dot means a low value. The X-axis shows the impact on the fraud prediction.
-
-    Positive SHAP Value (Right): Pushes the model to predict "Fraud."
-
-    Negative SHAP Value (Left): Pushes the model to predict "Legitimate."
-
-Key Insights:
-
-    Recurrence is the #1 Signal: The top features are historical. A high (red) value for CC_PREV_FRAUD (meaning the card has been used for fraud before) has the largest positive impact, strongly pushing the prediction to "Fraud."
-
-    Velocity is Critical: Features like TX_COUNT_1h and AMT_AVG_1h are top-tier predictors. High (red) values for these features (high-velocity attacks) are the next biggest drivers of fraud risk.
-
-    Anomalies & Context are Key:
-
-        IS_ANY_OUTLIER_IQR: A high value (red, meaning True) has a clear positive impact, confirming that outliers are inherently high-risk.
-
-        category_shopping_net: This OHE feature (red, meaning True) also strongly pushes the prediction toward fraud, validating our focus on "Card-Not-Present" (online) categories.
-
-Conclusion: The SHAP analysis proves that the model is making its decisions for the right reasons, basing its high-performance predictions on the logical, high-signal velocity and recurrence features we engineered.
-
-5. How to Use This Project
-
-    Run the notebooks in numerical order ([1] to [6]).
-
-    The final, deployable model is saved as final_xgb_model_production.json.
-
-    The list of 20 features used to build this model is saved in lasso_selected_features.npy.
+# Fraud detection with chronological validation
+
+This project detects fraudulent card transactions while treating temporal
+validity, leakage prevention, reproducibility, and operational reporting as
+first-class requirements.
+
+## Portfolio overview
+
+This project began as a notebook-based course assignment and was later rebuilt
+as a portfolio project. During that review, I found that the original random
+split and full-dataset transformations made its results look much stronger than
+they would be on later transactions. I chose to invalidate those results,
+redesign the experiment, and report the weaker—but more credible—outcome.
+
+The project now demonstrates:
+
+- the ability to audit and challenge an earlier analysis rather than defend an
+  attractive but unreliable result;
+- practical understanding of how time affects fraud detection and model
+  evaluation;
+- conversion of exploratory notebook work into tested, reusable Python code;
+- translation of model scores into review workload and explicit cost
+  assumptions; and
+- clear communication of deployment risks, data limitations, and unsuccessful
+  findings.
+
+The main lesson is that high offline metrics are not enough. The latest-period
+test retained high fraud recall, but severe drift caused precision and review
+capacity to deteriorate. That result is treated as a deployment warning, not
+hidden as an inconvenient outcome.
+
+The original notebook experiment used a random row split after full-data
+preprocessing and future-inclusive feature engineering. Its metrics are not
+comparable to production performance. The corrected source pipeline has now
+been rerun successfully; the results below come from its fixed chronological
+experiment.
+
+## Business objective
+
+Fraud review involves two competing errors:
+
+- A false negative misses a fraudulent transaction.
+- A false positive sends a legitimate transaction into review or blocks it.
+
+The operating scenario assigns a fixed cost of `$500` to each false negative
+and `$5` to each false positive. Validation threshold selection also limits the
+intended review queue to at most 5% of validation transactions. These are
+configurable scenario assumptions, not measured losses or realized savings.
+
+Accuracy is not used as the primary objective. Candidate models are selected by
+validation PR-AUC, and their locked operating points are reported with
+fraud-class precision, recall, absolute confusion counts, review load, and
+estimated scenario cost.
+
+## Data and temporal design
+
+The declared scope is California transactions from 2020. The corrected run used
+the surviving `prepped_data.pkl` artifact (2,013,945 rows). That file was
+created by the legacy preparation notebook and had already consolidated
+`city`, `job`, and `merchant` using the complete year. To prevent that legacy
+operation from entering the model, all three columns are explicitly excluded.
+
+The split boundaries are fixed in `config/training.toml`:
+
+| Split | Date range | Transactions | Fraud cases | Fraud rate |
+|---|---|---:|---:|---:|
+| Train | 2020-01-01 00:01:13–2020-08-31 23:59:59 | 1,260,902 | 7,561 | 0.5997% |
+| Validation | 2020-09-01 00:58:20–2020-10-31 23:59:56 | 301,906 | 1,867 | 0.6184% |
+| Test | 2020-11-01 00:23:09–2020-12-31 23:59:48 | 451,137 | 1,466 | 0.3250% |
+
+Train, validation, and test indices are asserted to be pairwise disjoint.
+Validation is used for candidate selection and threshold locking. Test is not
+used for feature choice, preprocessing, parameter selection, model selection,
+or threshold selection.
+
+Random splitting is inappropriate here because it mixes early and late
+transactions, conceals time drift, and allows future behavior from the same
+card to influence earlier training examples.
+
+## Leakage controls
+
+The authoritative implementation is under `src/fraud_detection/`.
+
+- Transactions are ordered by card and event time before history is built.
+- Equal-timestamp transactions are processed as one bucket and cannot observe
+  one another.
+- Previous transaction count, cumulative amount, mean, sample standard
+  deviation, fraud count/rate, and time since prior transaction use strictly
+  earlier timestamps.
+- First-card-event historical values are explicitly zero and accompanied by
+  `IS_FIRST_CARD_TX`.
+- `CC_BIN` extracts the first six digits per card; invalid, short, and missing
+  values remain missing. Raw card numbers and `CC_BIN` are identifier fields and
+  are excluded from modeling.
+- The corrected `CC_PREV_FRAUD` and historical fraud rate are generated and
+  regression-tested, but disabled in the model because the data has no
+  `label_available_at` timestamp.
+- IQR bounds, imputers, scaler statistics, and one-hot vocabularies are fit on
+  training only inside one scikit-learn pipeline.
+- Categorical encoding uses `handle_unknown="ignore"`.
+- The target is asserted absent from every feature matrix.
+- No resampling is performed.
+
+The old global `qcut` features were removed. The corrected model does not need
+quantile bins, so there are no bin edges to learn or apply.
+
+## Model selection and validation result
+
+Every candidate includes the complete train-fitted preprocessing pipeline.
+Models are compared on the same temporal validation period.
+
+| Candidate | Validation PR-AUC | Precision | Recall | Review rate | Estimated cost |
+|---|---:|---:|---:|---:|---:|
+| Prevalence baseline | 0.006184 | 0.0000 | 0.0000 | 0.0000% | $933,500 |
+| Logistic regression | 0.606089 | 0.1105 | 0.8393 | 4.6955% | $213,045 |
+| Conservative XGBoost | 0.867598 | 0.2159 | 0.9170 | 2.6263% | $108,585 |
+| Configured XGBoost | **0.901996** | **0.2390** | **0.9288** | **2.4027%** | **$94,100** |
+
+The configured XGBoost candidate was selected by validation PR-AUC. Validation
+locked the operating threshold at `0.7866255641` by minimizing the stated cost
+under the 5% review constraint.
+
+## Final test result
+
+The selected pipeline and locked threshold were applied to the latest period:
+
+| Metric | Test result |
+|---|---:|
+| PR-AUC | 0.779840 |
+| ROC-AUC (secondary) | 0.976072 |
+| Precision | 0.027752 |
+| Recall | 0.946112 |
+| Fraud detected (TP) | 1,387 |
+| Fraud missed (FN) | 79 |
+| Legitimate transactions flagged (FP) | 48,592 |
+| Legitimate transactions cleared (TN) | 401,079 |
+| Review rate | 11.0785% |
+| Estimated scenario cost | $282,460 |
+
+Precision 95% Wilson interval: 2.63%–2.92%. Recall 95% Wilson interval:
+93.33%–95.65%.
+
+This is materially weaker operational performance than validation. Although
+recall remains high, precision falls to 2.78% and the locked threshold exceeds
+the intended 5% review capacity on test. The threshold was not retuned using
+test data. November review load is 9.54%; December rises to 11.85%.
+
+The main observed drift signals include:
+
+- Fraud prevalence drops from 0.6184% on validation to 0.3250% on test.
+- Category distribution total-variation distance between train and test is
+  0.9590.
+- Transaction month and accumulated card-history features shift substantially
+  by construction and should be monitored carefully.
+
+See `reports/evaluation.md`, `reports/test_monthly_metrics.csv`, and
+`reports/train_test_drift.csv` for the generated details.
+
+## Reproduce
+
+Requirements: Python 3.11–3.13 and Poetry 2.x.
+
+```bash
+poetry install --with dev
+poetry run pytest -q
+poetry run ruff check src tests
+poetry run ruff format --check src tests
+poetry run python -m fraud_detection.training --config config/training.toml
+```
+
+The module form of the training command is intentional: generated console
+script shebangs are not portable when this repository’s directory name contains
+spaces.
+
+The configured input is `prepped_data.pkl`, which exists in this workspace but
+is intentionally ignored because it is large and contains sensitive
+identifiers. For a clean clone, place an authorized copy at that path or pass a
+CSV/pickle override:
+
+```bash
+poetry run python -m fraud_detection.training \
+  --config config/training.toml \
+  --input /authorized/path/to/transactions.csv
+```
+
+CSV ingestion applies the declared CA/2020 scope directly; it never chooses a
+state from target outcomes.
+
+## Inference
+
+The versioned artifact bundles the fitted IQR transform, imputation, scaling,
+one-hot vocabulary, estimator, feature schema, threshold, and metadata.
+
+```python
+import pandas as pd
+
+from fraud_detection.inference import load_artifact, score_transactions
+
+artifact = load_artifact("artifacts/fraud_pipeline_v1.0.0.joblib")
+transaction = pd.DataFrame(
+    [
+        {
+            "cc_num": "4111111111111111",
+            "trans_timestamp": "2020-12-31 12:00:00",
+            "amt": 125.00,
+            "category": "shopping_net",
+            "profile": "adults_2550_female_urban.json",
+            "city_pop": 100_000,
+            "is_male": 0,
+            "dob": "1990-06-15",
+            "lat": 34.05,
+            "long": -118.24,
+            "merch_lat": 34.06,
+            "merch_long": -118.25,
+        }
+    ]
+)
+
+result = score_transactions(transaction, artifact)
+print(result[["fraud_probability", "fraud_decision", "model_version"]])
+```
+
+For an existing card, pass only history known before every current row via the
+`history=` argument. The inference function rejects equal-time or future
+history. Model outputs are class-weighted risk probabilities and have not been
+calibrated against observed production outcomes.
+
+## Repository layout
+
+```text
+config/                  Fixed experiment and cost assumptions
+src/fraud_detection/     Data, features, split, preprocessing, models,
+                         evaluation, training, and inference
+tests/                   Leakage, boundary, inference, and smoke tests
+artifacts/               Versioned fitted pipeline and metadata
+reports/                 Generated metrics, diagnostics, and figures
+docs/                    Original audit and legacy-claim reconciliation
+*.ipynb                  Lightweight explanation/EDA notebooks
+```
+
+Generated, present artifacts:
+
+- `artifacts/fraud_pipeline_v1.0.0.joblib`
+- `artifacts/model_metadata.json`
+- `reports/metrics.json`
+- `reports/model_comparison.csv`
+- `reports/split_summary.csv`
+- `reports/validation_thresholds.csv`
+- `reports/test_monthly_metrics.csv`
+- `reports/test_category_metrics.csv`
+- `reports/train_test_drift.csv`
+- `reports/feature_importance.csv`
+- `reports/figures/precision_recall_curve.png`
+- `reports/figures/confusion_matrix.png`
+
+The local workspace may also contain `final_xgb_model_production.json`,
+`summary.xlsx`, and the original PowerPoint. They are coursework-era artifacts
+from the invalid random-split experiment, are intentionally excluded from the
+portfolio version, and must not be presented as current results.
+
+## Limitations
+
+- The evaluation covers one state and one calendar year; it is not evidence of
+  geographic or multi-year generalization.
+- Cards recur across time periods, so this is a known-card temporal evaluation,
+  not a new-card/cold-start benchmark.
+- Fraud-label availability and confirmation delays are absent. Target-derived
+  history is therefore excluded.
+- The review costs are hypothetical fixed amounts and omit transaction value,
+  recovery rates, customer friction, staffing, and downstream losses.
+- The large prepared pickle retains SSNs, card/account numbers, DOB, and
+  detailed locations. It should not be published and needs formal retention,
+  access-control, and de-identification policies.
+- The original choice of California was informed by full-year fraud counts.
+  The corrected experiment treats California as a fixed declared scope, but a
+  new project should choose scope independently of holdout labels.
+- Category drift is severe, and the locked threshold violates test-period
+  review capacity. Deployment is not recommended without drift controls,
+  probability calibration, a label-delay contract, and prospective shadow
+  evaluation.
+- Feature importance is associative and must not be interpreted causally.
+
+The exact legacy claims that need updating in the presentation or any external
+portfolio are listed in `docs/legacy_claims.md`. Those external materials were
+not edited.

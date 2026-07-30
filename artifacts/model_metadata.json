@@ -1,0 +1,167 @@
+{
+  "cost_assumptions": {
+    "false_negative_cost": 500.0,
+    "false_positive_cost": 5.0,
+    "max_review_rate": 0.05
+  },
+  "data": {
+    "bytes": 483465089,
+    "format": ".pkl",
+    "legacy_preconsolidated_columns_excluded": [
+      "city",
+      "job",
+      "merchant"
+    ],
+    "path": "prepped_data.pkl",
+    "rows": 2013945,
+    "scope": {
+      "state": "CA",
+      "year": 2020
+    },
+    "sha256": "a326d8e7ca21d30d3767444c425971328573ee268a05eaeacb553ad621af8b33"
+  },
+  "feature_schema": {
+    "binary": [
+      "is_male",
+      "IS_WEEKEND",
+      "IS_FIRST_CARD_TX"
+    ],
+    "categorical": [
+      "category",
+      "profile"
+    ],
+    "excluded": [
+      "is_fraud",
+      "city",
+      "job",
+      "merchant",
+      "zip",
+      "lat",
+      "long",
+      "merch_lat",
+      "merch_long",
+      "Unnamed: 0",
+      "CC_PREV_FRAUD",
+      "CC_HIST_FRAUD_RATE"
+    ],
+    "identifiers": [
+      "ssn",
+      "cc_num",
+      "acct_num",
+      "trans_num",
+      "CC_BIN"
+    ],
+    "model_features": [
+      "amt",
+      "city_pop",
+      "is_male",
+      "TX_HOUR",
+      "TX_DAY_OF_WEEK",
+      "TX_MONTH",
+      "IS_WEEKEND",
+      "AGE_AT_TX",
+      "DIST_HOME_MERCH_KM",
+      "PREV_TX_COUNT",
+      "PREV_CUMULATIVE_AMT",
+      "PREV_MEAN_AMT",
+      "PREV_STD_AMT",
+      "TIME_SINCE_LAST_TX",
+      "IS_FIRST_CARD_TX",
+      "AMT_VS_PREV_MEAN",
+      "category",
+      "profile"
+    ],
+    "numerical": [
+      "amt",
+      "city_pop",
+      "is_male",
+      "TX_HOUR",
+      "TX_DAY_OF_WEEK",
+      "TX_MONTH",
+      "IS_WEEKEND",
+      "AGE_AT_TX",
+      "DIST_HOME_MERCH_KM",
+      "PREV_TX_COUNT",
+      "PREV_CUMULATIVE_AMT",
+      "PREV_MEAN_AMT",
+      "PREV_STD_AMT",
+      "TIME_SINCE_LAST_TX",
+      "IS_FIRST_CARD_TX",
+      "AMT_VS_PREV_MEAN"
+    ],
+    "target_history_enabled": false,
+    "timestamps": [
+      "trans_date",
+      "trans_timestamp",
+      "dob"
+    ]
+  },
+  "library_versions": {
+    "joblib": "1.5.3",
+    "numpy": "2.4.6",
+    "pandas": "2.3.3",
+    "python": "3.11.14",
+    "scikit_learn": "1.9.0",
+    "xgboost": "3.2.0"
+  },
+  "model_name": "xgboost_configured",
+  "model_version": "1.0.0",
+  "random_seed": 42,
+  "selected_threshold": 0.7866255640983582,
+  "selection_metric": "validation_pr_auc",
+  "target_history_policy": "disabled because label-availability timestamps are absent",
+  "test_metrics": {
+    "estimated_cost": 282460.0,
+    "false_negatives": 79,
+    "false_positives": 48592,
+    "fraud_cases_detected": 1387,
+    "fraud_cases_missed": 79,
+    "fraud_prevalence": 0.003249567204640719,
+    "legitimate_transactions_flagged": 48592,
+    "pr_auc": 0.7798396733601618,
+    "precision": 0.027751655695392063,
+    "precision_wilson_95": [
+      0.0263474661455724,
+      0.029228435058629265
+    ],
+    "recall": 0.9461118690313779,
+    "recall_wilson_95": [
+      0.9333438973584797,
+      0.9565479968662586
+    ],
+    "review_rate": 0.11078452886817086,
+    "reviewed_transactions": 49979,
+    "roc_auc": 0.9760716947754948,
+    "threshold": 0.7866255640983582,
+    "true_negatives": 401079,
+    "true_positives": 1387
+  },
+  "training_cutoff": "2020-08-31 23:59:59",
+  "validation_cutoff": "2020-10-31 23:59:59",
+  "validation_metrics": {
+    "estimated_cost": 94100.0,
+    "false_negatives": 133,
+    "false_positives": 5520,
+    "fraud_cases_detected": 1734,
+    "fraud_cases_missed": 133,
+    "fraud_prevalence": 0.006184044040197943,
+    "legitimate_transactions_flagged": 5520,
+    "pr_auc": 0.9019963114764521,
+    "precision": 0.23904052936311002,
+    "precision_wilson_95": [
+      0.22936560329496206,
+      0.2489916987374833
+    ],
+    "recall": 0.9287627209426889,
+    "recall_wilson_95": [
+      0.9161934991717323,
+      0.9395711581975824
+    ],
+    "review_rate": 0.0240273462600942,
+    "reviewed_transactions": 7254,
+    "roc_auc": 0.9934302077598329,
+    "threshold": 0.7866255640983582,
+    "true_negatives": 294519,
+    "true_positives": 1734
+  }
+}
