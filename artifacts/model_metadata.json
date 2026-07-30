@@ -18,7 +18,12 @@
       "state": "CA",
       "year": 2020
     },
-    "sha256": "a326d8e7ca21d30d3767444c425971328573ee268a05eaeacb553ad621af8b33"
+    "sha256": "a326d8e7ca21d30d3767444c425971328573ee268a05eaeacb553ad621af8b33",
+    "upstream": {
+      "license": "MIT (as listed by the Kaggle dataset page)",
+      "name": "Credit Card Fraud Mega Dataset",
+      "url": "https://www.kaggle.com/datasets/karthikgangula/credit-card-fraud-mega-dataset"
+    }
   },
   "feature_schema": {
     "binary": [

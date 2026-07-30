@@ -74,8 +74,9 @@ chronological pipeline.
   features, split pickles, and plot files.
 - The README named `lasso_selected_features.npy`; code wrote
   `selected_features.npy`; neither existed.
-- `prepped_data.pkl` retained sensitive identifiers despite a PII-removal
-  claim.
+- `prepped_data.pkl` retained PII-shaped identifiers despite a PII-removal
+  claim. The later-confirmed Kaggle provenance makes the file publicly
+  obtainable, but does not make identity memorization a valid model feature.
 - Git had no commits. The 11.19 GB raw CSV and an older data-cleaning notebook
   were staged additions but deleted from the working tree. That unusual state
   was preserved; no reset, unstage, restore, or data deletion was performed.
@@ -96,3 +97,25 @@ The corrected implementation now provides:
 - a locked Poetry environment and automated regression/smoke tests.
 
 Exact corrected results are generated in `reports/evaluation.md`.
+
+## Removed-feature reassessment after source confirmation
+
+Confirming the Kaggle source changes attribution and distribution policy; it
+does not repair future leakage or establish that identifiers will generalize.
+Each removed feature was reassessed:
+
+| Legacy feature or feature family | Decision | Reason |
+|---|---|---|
+| `CC_PREV_FRAUD`, `ACCT_PREV_FRAUD`, fraud-rate history | Keep disabled | The dataset has no timestamp for when a fraud label became available. Public provenance does not make future labels observable at scoring time. |
+| SSN/card/account values, `CC_BIN`, `SSN_SHARED_FLAG` | Keep excluded | They encourage identity memorization and have no demonstrated meaning for a new card or another dataset. Several were also calculated with future rows. |
+| `CC_COUNT_LIFETIME`, full-user mean, global top categories | Keep excluded | They were computed with the complete year and therefore include holdout information. |
+| Global `qcut` bins and global IQR flag | Keep removed | Their cut points were learned before splitting. The current pipeline learns clipping bounds from training only, and tree models do not require quantile bins. |
+| `ZIP_FRAUD_RATE` | Do not restore | It was claimed but not implemented; a valid version would also need label-availability rules and train-only smoothing. |
+| Distance and amount-versus-history | Keep corrected replacements | The current pipeline already provides distance and amount versus a strict-past card mean without global leakage. |
+| 1-hour/24-hour/7-day velocity counts and amounts | Eligible for a future validation-only experiment | These are legitimate behavioral ideas, but the legacy rolling/shift implementation was incorrect. They should be rebuilt with strict-past, equal-timestamp-safe windows and accepted only if a preregistered validation comparison improves the chosen objective. |
+
+No feature was restored merely because the file is on Kaggle. That would trade
+an honest temporal experiment for a stronger-looking but less credible résumé
+metric. The velocity family remains the only technically justified enhancement
+candidate; it is documented as future work rather than tuned after seeing the
+final test period.

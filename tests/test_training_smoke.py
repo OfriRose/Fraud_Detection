@@ -117,4 +117,9 @@ def test_run_training_end_to_end_on_small_chronological_dataset(tmp_path: Path) 
 
     artifact = load_artifact(result["artifact_path"])
     assert artifact["model_version"] == "0.0.1"
+    assert artifact["metadata"]["data"]["upstream"] == {
+        "name": "Credit Card Fraud Mega Dataset",
+        "url": ("https://www.kaggle.com/datasets/karthikgangula/credit-card-fraud-mega-dataset"),
+        "license": "MIT (as listed by the Kaggle dataset page)",
+    }
     assert "is_fraud" not in artifact["feature_schema"]["model_features"]

@@ -54,11 +54,21 @@ estimated scenario cost.
 
 ## Data and temporal design
 
-The declared scope is California transactions from 2020. The corrected run used
-the surviving `prepped_data.pkl` artifact (2,013,945 rows). That file was
-created by the legacy preparation notebook and had already consolidated
-`city`, `job`, and `merchant` using the complete year. To prevent that legacy
-operation from entering the model, all three columns are explicitly excluded.
+The raw source is Karthik Gangula's
+[Credit Card Fraud Mega Dataset on Kaggle](https://www.kaggle.com/datasets/karthikgangula/credit-card-fraud-mega-dataset).
+The Kaggle listing identifies it as an 11.19 GB public dataset under the MIT
+license. The listing does not document how the transactions were collected or
+generated, so this project does **not** describe them as verified real bank
+transactions. The fields include names, SSNs, card/account numbers, and
+locations that look like personal data; they are treated as PII-shaped
+identifiers even though the dataset is publicly downloadable.
+
+The declared experiment scope is California transactions from 2020. The
+corrected run used the surviving `prepped_data.pkl` artifact (2,013,945 rows),
+derived from the Kaggle CSV by the legacy preparation notebook. That notebook
+had already consolidated `city`, `job`, and `merchant` using the complete
+year. To prevent that legacy operation from entering the model, all three
+columns are explicitly excluded.
 
 The split boundaries are fixed in `config/training.toml`:
 
@@ -173,18 +183,30 @@ script shebangs are not portable when this repository’s directory name contain
 spaces.
 
 The configured input is `prepped_data.pkl`, which exists in this workspace but
-is intentionally ignored because it is large and contains sensitive
-identifiers. For a clean clone, place an authorized copy at that path or pass a
-CSV/pickle override:
+is intentionally ignored because it is large and contains PII-shaped
+identifiers. A clean clone can download the public source through the Kaggle
+CLI:
+
+```bash
+kaggle datasets download \
+  karthikgangula/credit-card-fraud-mega-dataset \
+  --unzip
+```
+
+The Kaggle download is the raw input, not the prepared pickle. Run the data
+preparation notebook to recreate `prepped_data.pkl`, or pass the downloaded CSV
+directly:
 
 ```bash
 poetry run python -m fraud_detection.training \
   --config config/training.toml \
-  --input /authorized/path/to/transactions.csv
+  --input /path/to/credit_card_fraud.csv
 ```
 
 CSV ingestion applies the declared CA/2020 scope directly; it never chooses a
-state from target outcomes.
+state from target outcomes. Keep both raw and prepared data out of Git: the
+dataset can be reproduced from its public source, while committing multi-GB
+data would make cloning and GitHub maintenance impractical.
 
 ## Inference
 
@@ -262,15 +284,19 @@ portfolio version, and must not be presented as current results.
 
 - The evaluation covers one state and one calendar year; it is not evidence of
   geographic or multi-year generalization.
+- The Kaggle listing does not document collection or simulation methodology.
+  Results therefore demonstrate the modeling workflow, not performance on
+  verified production banking data.
 - Cards recur across time periods, so this is a known-card temporal evaluation,
   not a new-card/cold-start benchmark.
 - Fraud-label availability and confirmation delays are absent. Target-derived
   history is therefore excluded.
 - The review costs are hypothetical fixed amounts and omit transaction value,
   recovery rates, customer friction, staffing, and downstream losses.
-- The large prepared pickle retains SSNs, card/account numbers, DOB, and
-  detailed locations. It should not be published and needs formal retention,
-  access-control, and de-identification policies.
+- The large prepared pickle retains PII-shaped names, SSNs, card/account
+  numbers, DOB, and detailed locations. Public availability does not make
+  identity memorization a useful fraud signal, so these fields remain out of
+  the model and out of Git.
 - The original choice of California was informed by full-year fraud counts.
   The corrected experiment treats California as a fixed declared scope, but a
   new project should choose scope independently of holdout labels.

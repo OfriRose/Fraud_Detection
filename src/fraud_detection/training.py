@@ -443,6 +443,11 @@ def run_training(
         "path": str(source_path),
         "format": source_path.suffix.lower(),
         "rows": len(raw),
+        "upstream": {
+            "name": config.data.source_name,
+            "url": config.data.source_url,
+            "license": config.data.source_license,
+        },
         "scope": {"state": config.data.state, "year": config.data.year},
         "legacy_preconsolidated_columns_excluded": list(MODEL_EXCLUDED_PRECONSOLIDATED_COLUMNS),
     }

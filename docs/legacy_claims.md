@@ -18,7 +18,10 @@ presentation, or interview narrative.
 - Slide 8: remove nonexistent `ZIP_FRAUD_RATE` and clarify that
   `CC_PREV_FRAUD` is corrected but excluded without label-availability data.
 - Slide 3: correct the statement that raw SSN was immediately dropped; the
-  surviving prepared pickle retains SSN and other sensitive identifiers.
+  surviving prepared pickle retains SSN and other PII-shaped identifiers.
+- Any repository, slide, or résumé wording that calls this a verified
+  “real-world” banking dataset should instead name and link the Kaggle source.
+  Its listing does not document collection or generation methodology.
 
 The PowerPoint was not edited because the user requested a claim list rather
 than authorizing changes to external-facing portfolio material.

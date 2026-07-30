@@ -27,9 +27,12 @@ class ProjectConfig:
 
 @dataclass(frozen=True)
 class DataConfig:
-    """Input schema and chronological split boundaries."""
+    """Input provenance, schema, and chronological split boundaries."""
 
     input_path: Path
+    source_name: str
+    source_url: str
+    source_license: str
     state: str
     year: int
     include_target_history: bool
@@ -195,6 +198,9 @@ def _load_data(section: dict[str, Any]) -> DataConfig:
         raise ConfigError("year must be between 1900 and 9999")
     return DataConfig(
         input_path=Path(_non_empty_string(section, "input_path")),
+        source_name=_non_empty_string(section, "source_name"),
+        source_url=_non_empty_string(section, "source_url"),
+        source_license=_non_empty_string(section, "source_license"),
         state=_non_empty_string(section, "state"),
         year=year,
         include_target_history=_value(section, "include_target_history", bool),

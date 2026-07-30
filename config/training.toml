@@ -4,6 +4,9 @@ model_version = "1.0.0"
 
 [data]
 input_path = "prepped_data.pkl"
+source_name = "Credit Card Fraud Mega Dataset"
+source_url = "https://www.kaggle.com/datasets/karthikgangula/credit-card-fraud-mega-dataset"
+source_license = "MIT (as listed by the Kaggle dataset page)"
 state = "CA"
 year = 2020
 include_target_history = false
