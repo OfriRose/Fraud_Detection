@@ -32,7 +32,7 @@ The surviving `prepped_data.pkl` was created by a legacy notebook that consolida
 
 Every candidate is a complete scikit-learn pipeline. IQR clipping bounds, imputers, scalers, and one-hot category vocabularies are fitted on training data only; categorical encoding uses `handle_unknown="ignore"`. The target is asserted absent from each feature matrix, and no resampling is performed.
 
-Candidates are compared by validation PR-AUC. The selected configured XGBoost model locks its threshold by minimizing `false negatives × $500 + false positives × $5`, subject to reviewing no more than 5% of validation transactions. Exact implementation details are in [`evaluation.py`](../src/fraud_detection/evaluation.py) and fixed configuration is in [`training.toml`](../config/training.toml).
+Fraud is rare (0.5997% of train and 0.6184% of validation transactions), so accuracy is not a selection metric. Logistic regression uses `class_weight="balanced"`; XGBoost uses `scale_pos_weight` calculated as the training negative/positive ratio. Candidates are compared by validation PR-AUC, then reported with fraud-class precision, recall, and review volume. The selected configured XGBoost model locks its threshold by minimizing `false negatives × $500 + false positives × $5`, subject to reviewing no more than 5% of validation transactions. Exact implementation details are in [`evaluation.py`](../src/fraud_detection/evaluation.py) and fixed configuration is in [`training.toml`](../config/training.toml).
 
 ## Artifact and inference contract
 

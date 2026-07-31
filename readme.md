@@ -24,11 +24,14 @@ Fraud models must make decisions using only information available when a transac
 
 This rebuild invalidates those legacy results and uses a chronological experiment instead. The [original implementation audit](docs/audit.md) documents the findings and the [legacy-claim reconciliation](docs/legacy_claims.md) records which old claims must not be reused.
 
+The data is also highly imbalanced: fraud represents 0.60% of training transactions and 0.62% of validation transactions. Accuracy would therefore be misleading. The pipeline uses training-derived class weighting, selects models by PR-AUC, and selects a cost- and capacity-constrained review threshold on validation data rather than relying on a default 0.5 cutoff.
+
 ## What changed
 
 - **Strict-past features:** per-card history and 1-hour, 24-hour, and 7-day velocity features use earlier timestamps only. Transactions with the same timestamp cannot observe one another.
 - **Chronological splits:** train, validation, and test cover consecutive time periods. Test data is not used for feature selection, preprocessing, model selection, or threshold selection.
 - **Train-only preprocessing:** clipping bounds, imputers, scaling, and category vocabularies are fitted within the training pipeline.
+- **Imbalance-aware modeling:** class weights are calculated from the training split; no synthetic over- or under-sampling is applied. PR-AUC, fraud-class precision/recall, and review volume—not accuracy—drive evaluation.
 - **An operating point chosen on validation:** the threshold minimizes a stated false-negative/false-positive cost scenario while limiting validation review volume to 5%.
 - **Operational evaluation:** final reporting includes fraud-class precision and recall, confusion counts, review workload, uncertainty intervals, monthly slices, and drift diagnostics.
 
