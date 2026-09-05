@@ -60,3 +60,6 @@ htmlcov/
 /summary.xlsx
 /final_xgb_model_production.json
 /[[]1[]]Data_Cleaning.ipynb
+
+AGENTS.md
+

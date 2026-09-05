@@ -4,31 +4,28 @@ This document provides the context behind the concise README result. Generated s
 
 ## Operating point and capacity
 
-The selected threshold is `0.6991600990`. It was selected on validation data by minimizing a scenario cost of $500 per false negative and $5 per false positive, subject to a maximum review rate of 5%.
+The locked threshold, costs, and final outcomes are recorded in the generated
+[evaluation report](../reports/evaluation.md) and [metrics](../reports/metrics.json).
 
 The 5% condition applies during **validation threshold selection**. It is implemented by `select_operating_threshold` in [`src/fraud_detection/evaluation.py`](../src/fraud_detection/evaluation.py), which permits at most `floor(max_review_rate × validation rows)` reviewed transactions. Test labels are not passed to that function, and the threshold is not retuned on test.
 
-At the locked threshold, validation reviewed 3,522 of 301,906 transactions (1.1666%). Test reviewed 7,994 of 451,137 (1.7720%). Therefore the test result is below the 5% configured limit; it does **not** violate review capacity under the only configured capacity definition. The rate increased by 0.6054 percentage points, or about 52% relative to validation. Absolute review counts cannot be compared directly because the periods contain different numbers of transactions.
-
-## Final test outcomes
-
-| Metric | Test result |
-|---|---:|
-| PR-AUC | 0.954273 |
-| Precision | 18.1886% (95% Wilson: 17.36%–19.05%) |
-| Recall | 99.1814% (95% Wilson: 98.57%–99.53%) |
-| Fraud detected / missed | 1,454 / 12 |
-| Legitimate flagged | 6,540 |
-| Review rate | 1.7720% |
-| Estimated scenario cost | $38,700 |
+The saved version 1.1.0 run stays below the configured review-rate target on
+test. This is an observed outcome, not a guaranteed future capacity bound.
+Absolute review counts cannot be compared directly across periods with different
+transaction counts.
 
 The scenario cost is an analytical comparison aid, not realized savings. It omits transaction amount, recoveries, staffing, customer friction, downstream losses, and any difference between review and blocking outcomes.
 
 ## Monthly and drift findings
 
-November reviewed 2.0463% of transactions with 24.57% precision; December reviewed 1.6337% with 14.16% precision. Recall remained 98.83% and 99.57%, respectively. The lower December fraud prevalence (0.2323%, versus 0.5088% in November) is consistent with lower precision at the fixed threshold; this is an interpretation of the reported metrics, not a causal attribution.
+The [monthly metrics](../reports/test_monthly_metrics.csv) show lower December
+fraud prevalence and precision at the fixed threshold. This is a descriptive
+association, not a causal attribution.
 
-The train/test drift file reports category total-variation distance of 0.9590; large expected shifts in calendar month (standardized mean difference 3.02) and accumulating card history (prior count 2.42 and cumulative amount 2.29); and higher test 24-hour and 7-day transaction counts (0.68 and 0.98). These history shifts are partly expected because the features accumulate over time, but they still warrant monitoring. Feature importance is associative, not causal, and drift diagnostics do not establish why performance changed.
+The [drift report](../reports/train_test_drift.csv) shows a large category shift,
+expected shifts in calendar month and accumulating card history, and changes in
+recent transaction velocity. Feature importance is associative, and these
+diagnostics do not establish why performance changed.
 
 ## Extended limitations
 

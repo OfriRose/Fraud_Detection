@@ -9,10 +9,6 @@ source_url = "https://www.kaggle.com/datasets/karthikgangula/credit-card-fraud-m
 source_license = "MIT (as listed by the Kaggle dataset page)"
 state = "CA"
 year = 2020
-include_target_history = false
-target_column = "is_fraud"
-timestamp_column = "trans_timestamp"
-entity_column = "cc_num"
 train_end = "2020-08-31 23:59:59"
 validation_end = "2020-10-31 23:59:59"
 

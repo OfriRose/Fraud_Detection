@@ -7,7 +7,6 @@ as one bucket, so their amounts and labels cannot leak into one another.
 
 from __future__ import annotations
 
-import numbers
 from collections import deque
 from typing import Final
 
@@ -40,7 +39,6 @@ VELOCITY_FEATURE_COLUMNS: Final[tuple[str, ...]] = tuple(
     )
 )
 ENGINEERED_FEATURE_COLUMNS: Final[tuple[str, ...]] = (
-    "CC_BIN",
     "TX_HOUR",
     "TX_DAY_OF_WEEK",
     "TX_MONTH",
@@ -51,24 +49,17 @@ ENGINEERED_FEATURE_COLUMNS: Final[tuple[str, ...]] = (
     "PREV_CUMULATIVE_AMT",
     "PREV_MEAN_AMT",
     "PREV_STD_AMT",
-    "CC_PREV_FRAUD",
-    "CC_HIST_FRAUD_RATE",
     "TIME_SINCE_LAST_TX",
     "IS_FIRST_CARD_TX",
     "AMT_VS_PREV_MEAN",
     *VELOCITY_FEATURE_COLUMNS,
 )
 
-_NUMERIC_FEATURE_COLUMNS: Final[tuple[str, ...]] = tuple(
-    column for column in ENGINEERED_FEATURE_COLUMNS if column != "CC_BIN"
-)
 _HISTORY_ZERO_AT_COLD_START: Final[tuple[str, ...]] = (
     "PREV_TX_COUNT",
     "PREV_CUMULATIVE_AMT",
     "PREV_MEAN_AMT",
     "PREV_STD_AMT",
-    "CC_PREV_FRAUD",
-    "CC_HIST_FRAUD_RATE",
     "TIME_SINCE_LAST_TX",
     "AMT_VS_PREV_MEAN",
     *VELOCITY_FEATURE_COLUMNS,
@@ -169,35 +160,6 @@ def _stringify_card_values(values: pd.Series) -> pd.Series:
     return text
 
 
-def extract_cc_bin(values: pd.Series, digits: int = 6) -> pd.Series:
-    """Extract a fixed-width issuer-identification prefix from card values.
-
-    Spaces and hyphens are ignored.  A value must otherwise contain only
-    digits and have at least ``digits`` digits.  Invalid, short, or missing
-    values become :data:`pandas.NA`.  The returned Series always uses pandas'
-    nullable :class:`~pandas.StringDtype` and preserves the input index/name.
-
-    Parameters
-    ----------
-    values:
-        Card-number values.
-    digits:
-        Number of leading digits to return.  Must be a positive integer.
-    """
-
-    if not isinstance(values, pd.Series):
-        raise TypeError("values must be a pandas Series")
-    if isinstance(digits, bool) or not isinstance(digits, numbers.Integral) or digits <= 0:
-        raise ValueError("digits must be a positive integer")
-
-    width = int(digits)
-    cleaned = _stringify_card_values(values).str.replace(r"[\s-]+", "", regex=True)
-    valid = cleaned.str.fullmatch(r"[0-9]+", na=False) & cleaned.str.len().ge(width)
-    result = cleaned.str.slice(stop=width).where(valid, pd.NA).astype("string")
-    result.name = values.name
-    return result
-
-
 def _parse_required_datetimes(values: pd.Series, column: str) -> pd.Series:
     try:
         parsed = pd.to_datetime(values, errors="raise")
@@ -237,28 +199,6 @@ def _finite_numeric_column(
     return array
 
 
-def _target_contributions(
-    transactions: pd.DataFrame,
-    target_col: str,
-) -> np.ndarray:
-    """Return known binary labels, with absent/missing labels contributing zero."""
-
-    if target_col not in transactions.columns:
-        return np.zeros(len(transactions), dtype=np.int64)
-
-    raw_target = transactions[target_col]
-    known = raw_target.notna()
-    try:
-        numeric = pd.to_numeric(raw_target, errors="coerce")
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{target_col!r} must contain only binary labels") from exc
-
-    invalid = known & (numeric.isna() | ~numeric.isin((0, 1)))
-    if invalid.any():
-        raise ValueError(f"{target_col!r} must contain only 0, 1, or missing values")
-    return numeric.fillna(0).to_numpy(dtype=np.int64)
-
-
 def _haversine_km(
     latitude: np.ndarray,
     longitude: np.ndarray,
@@ -288,7 +228,7 @@ def _haversine_km(
 def _validate_engineered_features(features: pd.DataFrame) -> None:
     """Assert invariants that would indicate leakage or corrupt history."""
 
-    numeric = features.loc[:, _NUMERIC_FEATURE_COLUMNS].to_numpy(dtype=np.float64)
+    numeric = features.loc[:, ENGINEERED_FEATURE_COLUMNS].to_numpy(dtype=np.float64)
     if not np.isfinite(numeric).all():
         raise AssertionError("engineered numeric features contain missing/infinite values")
 
@@ -299,8 +239,6 @@ def _validate_engineered_features(features: pd.DataFrame) -> None:
         "PREV_CUMULATIVE_AMT",
         "PREV_MEAN_AMT",
         "PREV_STD_AMT",
-        "CC_PREV_FRAUD",
-        "CC_HIST_FRAUD_RATE",
         "TIME_SINCE_LAST_TX",
         "AMT_VS_PREV_MEAN",
     )
@@ -308,19 +246,6 @@ def _validate_engineered_features(features: pd.DataFrame) -> None:
         raise AssertionError("engineered history must be nonnegative")
 
     previous_count = features["PREV_TX_COUNT"].to_numpy(dtype=np.int64)
-    previous_fraud = features["CC_PREV_FRAUD"].to_numpy(dtype=np.int64)
-    if np.any(previous_fraud > previous_count):
-        raise AssertionError("previous fraud count cannot exceed transaction count")
-
-    expected_rate = np.divide(
-        previous_fraud,
-        previous_count,
-        out=np.zeros(len(features), dtype=np.float64),
-        where=previous_count > 0,
-    )
-    if not np.allclose(features["CC_HIST_FRAUD_RATE"], expected_rate):
-        raise AssertionError("historical fraud rate is internally inconsistent")
-
     expected_mean = np.divide(
         features["PREV_CUMULATIVE_AMT"].to_numpy(dtype=np.float64),
         previous_count,
@@ -341,10 +266,7 @@ def _validate_engineered_features(features: pd.DataFrame) -> None:
             raise AssertionError("first-card-event history must be explicitly zero")
 
 
-def build_features(
-    transactions: pd.DataFrame,
-    target_col: str = "is_fraud",
-) -> pd.DataFrame:
+def build_features(transactions: pd.DataFrame) -> pd.DataFrame:
     """Return a copy of ``transactions`` with static and strict-past features.
 
     Transactions are stable-sorted internally by card and timestamp.  The
@@ -354,14 +276,12 @@ def build_features(
 
     ``PREV_STD_AMT`` is the sample standard deviation (``ddof=1``), explicitly
     zero until at least two prior transactions exist. ``TIME_SINCE_LAST_TX`` is
-    measured in seconds. Missing labels, or an entirely absent target column,
-    contribute zero to historical fraud counts.
+    measured in seconds. Labels are never used to generate features because
+    their availability at scoring time is unknown.
     """
 
     if not isinstance(transactions, pd.DataFrame):
         raise TypeError("transactions must be a pandas DataFrame")
-    if not isinstance(target_col, str) or not target_col:
-        raise ValueError("target_col must be a non-empty string")
 
     missing_columns = [column for column in REQUIRED_COLUMNS if column not in transactions.columns]
     if missing_columns:
@@ -400,7 +320,6 @@ def build_features(
     if np.any(age < 0):
         raise ValueError("'dob' must not be later than 'trans_timestamp'")
 
-    result["CC_BIN"] = pd.array(extract_cc_bin(transactions["cc_num"]), dtype="string")
     result["TX_HOUR"] = transaction_time.dt.hour.to_numpy(dtype=np.int64)
     result["TX_DAY_OF_WEEK"] = transaction_time.dt.dayofweek.to_numpy(dtype=np.int64)
     result["TX_MONTH"] = transaction_time.dt.month.to_numpy(dtype=np.int64)
@@ -418,7 +337,6 @@ def build_features(
     if transactions.empty:
         integer_history = {
             "PREV_TX_COUNT",
-            "CC_PREV_FRAUD",
             "IS_FIRST_CARD_TX",
             *(feature for feature in VELOCITY_FEATURE_COLUMNS if feature.startswith("TX_COUNT_")),
         }
@@ -427,8 +345,6 @@ def build_features(
             "PREV_CUMULATIVE_AMT",
             "PREV_MEAN_AMT",
             "PREV_STD_AMT",
-            "CC_PREV_FRAUD",
-            "CC_HIST_FRAUD_RATE",
             "TIME_SINCE_LAST_TX",
             "IS_FIRST_CARD_TX",
             "AMT_VS_PREV_MEAN",
@@ -439,14 +355,12 @@ def build_features(
         _validate_engineered_features(result)
         return result
 
-    target = _target_contributions(transactions, target_col)
     work = pd.DataFrame(
         {
             "_fd_position": np.arange(len(transactions), dtype=np.int64),
             "_fd_card": pd.array(card_key, dtype="string"),
             "_fd_timestamp": pd.array(transaction_time),
             "_fd_amount": amount,
-            "_fd_target": target,
         }
     )
     work = work.sort_values(
@@ -474,7 +388,6 @@ def build_features(
             _fd_bucket_amount=("_fd_amount", "sum"),
             _fd_bucket_max=("_fd_amount", "max"),
             _fd_bucket_amount_squared=("_fd_amount_squared", "sum"),
-            _fd_bucket_fraud=("_fd_target", "sum"),
         )
         .reset_index()
     )
@@ -491,14 +404,9 @@ def build_features(
         card_buckets["_fd_bucket_amount_squared"].cumsum() - buckets["_fd_bucket_amount_squared"],
         0.0,
     )
-    buckets["_fd_previous_fraud"] = (
-        card_buckets["_fd_bucket_fraud"].cumsum() - buckets["_fd_bucket_fraud"]
-    ).astype(np.int64)
-
     previous_count = buckets["_fd_previous_count"].to_numpy(dtype=np.int64)
     previous_amount = buckets["_fd_previous_amount"].to_numpy(dtype=np.float64)
     previous_amount_squared = buckets["_fd_previous_amount_squared"].to_numpy(dtype=np.float64)
-    previous_fraud = buckets["_fd_previous_fraud"].to_numpy(dtype=np.int64)
 
     previous_mean = np.divide(
         previous_amount,
@@ -524,13 +432,6 @@ def build_features(
             where=previous_count > 1,
         )
     )
-    historical_fraud_rate = np.divide(
-        previous_fraud,
-        previous_count,
-        out=np.zeros(len(buckets), dtype=np.float64),
-        where=previous_count > 0,
-    )
-
     previous_timestamp = card_buckets["_fd_timestamp"].shift(1)
     time_since_previous = (
         (buckets["_fd_timestamp"] - previous_timestamp).dt.total_seconds().fillna(0.0)
@@ -538,7 +439,6 @@ def build_features(
 
     buckets["_fd_previous_mean"] = previous_mean
     buckets["_fd_previous_std"] = previous_std
-    buckets["_fd_historical_fraud_rate"] = historical_fraud_rate
     buckets["_fd_time_since_previous"] = time_since_previous
     buckets["_fd_is_first"] = (previous_count == 0).astype(np.int8)
     _add_strict_past_velocity_features(buckets)
@@ -549,8 +449,6 @@ def build_features(
         "PREV_CUMULATIVE_AMT": "_fd_previous_amount",
         "PREV_MEAN_AMT": "_fd_previous_mean",
         "PREV_STD_AMT": "_fd_previous_std",
-        "CC_PREV_FRAUD": "_fd_previous_fraud",
-        "CC_HIST_FRAUD_RATE": "_fd_historical_fraud_rate",
         "TIME_SINCE_LAST_TX": "_fd_time_since_previous",
         "IS_FIRST_CARD_TX": "_fd_is_first",
         **{feature: feature for feature in VELOCITY_FEATURE_COLUMNS},
@@ -570,7 +468,6 @@ def build_features(
     restored = work.sort_values("_fd_position", kind="mergesort")
     integer_history = {
         "PREV_TX_COUNT",
-        "CC_PREV_FRAUD",
         "IS_FIRST_CARD_TX",
         *(feature for feature in VELOCITY_FEATURE_COLUMNS if feature.startswith("TX_COUNT_")),
     }
@@ -589,5 +486,4 @@ __all__ = [
     "REQUIRED_COLUMNS",
     "VELOCITY_FEATURE_COLUMNS",
     "build_features",
-    "extract_cc_bin",
 ]

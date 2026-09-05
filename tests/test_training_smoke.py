@@ -4,10 +4,13 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import pytest
 
 from fraud_detection.config import load_config
-from fraud_detection.inference import load_artifact
+from fraud_detection.inference import load_artifact, score_transactions
+from fraud_detection.modeling import build_candidate_pipelines
 from fraud_detection.training import run_training
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +49,10 @@ def _synthetic_2020_transactions() -> pd.DataFrame:
     return pd.DataFrame.from_records(records)
 
 
-def test_run_training_end_to_end_on_small_chronological_dataset(tmp_path: Path) -> None:
+@pytest.mark.parametrize("baseline_only", [False, True])
+def test_run_training_end_to_end_on_small_chronological_dataset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, baseline_only: bool
+) -> None:
     transactions = _synthetic_2020_transactions()
     timestamps = pd.to_datetime(transactions["trans_timestamp"])
     train_mask = timestamps <= pd.Timestamp("2020-08-31 23:59:59")
@@ -88,6 +94,18 @@ def test_run_training_end_to_end_on_small_chronological_dataset(tmp_path: Path) 
         ),
     )
 
+    if baseline_only:
+        # A baseline winner must still support reporting, packaging, and inference.
+        def baseline_candidate(config, y_train, schema):
+            candidates = build_candidate_pipelines(config, y_train, schema)
+            baseline = candidates["prevalence_baseline"]
+            assert list(baseline.named_steps) == ["model"]
+            return {"prevalence_baseline": baseline}
+
+        monkeypatch.setattr(
+            "fraud_detection.training.build_candidate_pipelines", baseline_candidate
+        )
+
     result = run_training(quick_config, transactions=transactions)
 
     assert result["artifact_path"] == tmp_path / "artifacts" / "fraud_pipeline_smoke.joblib"
@@ -123,3 +141,12 @@ def test_run_training_end_to_end_on_small_chronological_dataset(tmp_path: Path) 
         "license": "MIT (as listed by the Kaggle dataset page)",
     }
     assert "is_fraud" not in artifact["feature_schema"]["model_features"]
+
+    if baseline_only:
+        assert metrics["champion_model"] == "prevalence_baseline"
+        assert pd.read_csv(tmp_path / "reports" / "feature_importance.csv").empty
+        scored = score_transactions(transactions.loc[test_mask], artifact)
+        np.testing.assert_array_equal(
+            scored["fraud_probability"],
+            np.full(int(test_mask.sum()), transactions.loc[train_mask, "is_fraud"].mean()),
+        )

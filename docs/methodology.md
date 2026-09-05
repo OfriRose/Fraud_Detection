@@ -6,13 +6,9 @@ This document expands the concise methodology in the project README. The authori
 
 The configured experiment uses California transactions from 2020 from the [Credit Card Fraud Mega Dataset](https://www.kaggle.com/datasets/karthikgangula/credit-card-fraud-mega-dataset). The source listing identifies an MIT license but does not document collection or simulation methodology; the project does not present it as verified bank production data.
 
-`config/training.toml` fixes the boundaries below. Split indices are asserted to be pairwise disjoint.
-
-| Split | Date range | Transactions | Fraud cases | Fraud rate |
-|---|---|---:|---:|---:|
-| Train | 2020-01-01 00:01:13–2020-08-31 23:59:59 | 1,260,902 | 7,561 | 0.5997% |
-| Validation | 2020-09-01 00:58:20–2020-10-31 23:59:56 | 301,906 | 1,867 | 0.6184% |
-| Test | 2020-11-01 00:23:09–2020-12-31 23:59:48 | 451,137 | 1,466 | 0.3250% |
+[training.toml](../config/training.toml) fixes the chronological boundaries.
+Split indices are asserted disjoint. Exact dates, counts, and fraud prevalence
+are generated in the [split summary](../reports/split_summary.csv).
 
 Validation chooses the candidate model and operating threshold. Test is not used for preprocessing, feature selection, hyperparameter selection, model selection, or threshold selection.
 
@@ -22,17 +18,25 @@ Validation chooses the candidate model and operating threshold. Test is not used
 - Previous transaction count, cumulative amount, mean, sample standard deviation, and time since prior transaction use only earlier timestamps.
 - Per-card 1-hour, 24-hour, and 7-day counts, maximum amounts, and mean amounts use `[timestamp - window, timestamp)` boundaries.
 - First-card-event historical values are zero and `IS_FIRST_CARD_TX` records that state.
-- `CC_BIN` extracts the first six card digits, but both it and raw identifiers are excluded from modeling.
-- Corrected prior-fraud and historical-fraud-rate features are generated and regression-tested but disabled. The source has no `label_available_at` timestamp, so past labels cannot safely be assumed observable at scoring.
+- Raw identifiers are excluded from modeling. `CC_BIN` is not generated.
+- Target-derived history is neither generated nor configurable. The source has no `label_available_at` timestamp, so past labels cannot safely be assumed observable at scoring.
 - Legacy global quantile bins were removed. The model does not require them.
 
 The surviving `prepped_data.pkl` was created by a legacy notebook that consolidated `city`, `job`, and `merchant` over the complete year. These three columns are explicitly excluded to prevent that pre-split transformation from entering the model.
 
 ## Preprocessing and selection
 
-Every candidate is a complete scikit-learn pipeline. IQR clipping bounds, imputers, scalers, and one-hot category vocabularies are fitted on training data only; categorical encoding uses `handle_unknown="ignore"`. The target is asserted absent from each feature matrix, and no resampling is performed.
+Learned candidates use complete scikit-learn pipelines. The prevalence baseline uses only training-label frequencies and skips preprocessing. IQR clipping bounds, imputers, scalers, and one-hot category vocabularies are fitted on training data only; categorical encoding uses `handle_unknown="ignore"`. The target is asserted absent from each feature matrix, and no resampling is performed.
 
-Fraud is rare (0.5997% of train and 0.6184% of validation transactions), so accuracy is not a selection metric. Logistic regression uses `class_weight="balanced"`; XGBoost uses `scale_pos_weight` calculated as the training negative/positive ratio. Candidates are compared by validation PR-AUC, then reported with fraud-class precision, recall, and review volume. The selected configured XGBoost model locks its threshold by minimizing `false negatives × $500 + false positives × $5`, subject to reviewing no more than 5% of validation transactions. Exact implementation details are in [`evaluation.py`](../src/fraud_detection/evaluation.py) and fixed configuration is in [`training.toml`](../config/training.toml).
+Fraud is rare, so accuracy is not a selection metric. Logistic regression is
+an interpretable baseline with `class_weight="balanced"`; XGBoost captures
+nonlinear interactions and uses the training negative/positive ratio for
+`scale_pos_weight`. Two XGBoost settings provide a small validation comparison
+without a large search. Validation PR-AUC selects the candidate; lower-ranking
+alternatives are retained in the [model comparison](../reports/model_comparison.csv).
+The selected model locks its threshold by minimizing the configured error cost
+under validation review capacity. Exact rules are in
+[evaluation.py](../src/fraud_detection/evaluation.py).
 
 ## Artifact and inference contract
 
@@ -41,3 +45,43 @@ The versioned artifact contains the fitted preprocessing/model pipeline, feature
 For an existing card, callers must provide only history known before each current transaction through `history=`. The inference interface rejects equal-time and future history. Scores are not calibrated probabilities of observed production fraud.
 
 The full legacy failure analysis, including historical-feature and preprocessing leakage, is in the [audit](audit.md).
+
+## Scoring example
+
+```python
+import pandas as pd
+
+from fraud_detection.inference import load_artifact, score_transactions
+
+artifact = load_artifact("artifacts/fraud_pipeline_v1.1.0.joblib")
+transaction = pd.DataFrame(
+    [
+        {
+            "cc_num": "4111111111111111",
+            "trans_timestamp": "2020-12-31 12:00:00",
+            "amt": 125.00,
+            "category": "shopping_net",
+            "profile": "adults_2550_female_urban.json",
+            "city_pop": 100_000,
+            "is_male": 0,
+            "dob": "1990-06-15",
+            "lat": 34.05,
+            "long": -118.24,
+            "merch_lat": 34.06,
+            "merch_long": -118.25,
+        }
+    ]
+)
+
+result = score_transactions(transaction, artifact)
+print(result[["fraud_probability", "fraud_decision", "model_version"]])
+```
+
+For an existing card, pass only history known before every current row via the
+`history=` argument. The inference function rejects equal-time or future
+history. Model outputs are class-weighted risk probabilities and have not been
+calibrated against observed production outcomes.
+
+
+Use the module training command because console-script shebangs are not portable
+when the repository path contains spaces.

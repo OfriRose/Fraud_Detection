@@ -80,8 +80,8 @@ def score_transactions(
     """Score one or more current transactions.
 
     `history` is optional and, when provided, must contain only rows known
-    before every current row for the same card. Current targets are forcibly
-    treated as unknown so a batch cannot leak its labels into later scores.
+    before every current row for the same card. Labels are never used to build
+    features, so a batch cannot leak its labels into later scores.
     With empty history, the explicit cold-start values are used.
     """
 
@@ -99,20 +99,17 @@ def score_transactions(
     current = transactions.copy()
     current["_fd_current_position"] = range(len(current))
     current["_fd_is_current"] = True
-    current["is_fraud"] = pd.NA
 
     historical = pd.DataFrame() if history is None else history.copy()
     _validate_scoring_history(current, historical)
     if not historical.empty:
         historical["_fd_is_current"] = False
         historical["_fd_current_position"] = -1
-        if "is_fraud" not in historical:
-            historical["is_fraud"] = pd.NA
         combined = pd.concat([historical, current], ignore_index=True, sort=False)
     else:
         combined = current.reset_index(drop=True)
 
-    featured = build_features(combined, target_col="is_fraud")
+    featured = build_features(combined)
     current_features = (
         featured.loc[featured["_fd_is_current"]]
         .sort_values("_fd_current_position", kind="mergesort")

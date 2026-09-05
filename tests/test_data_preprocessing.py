@@ -42,7 +42,7 @@ def test_data_preparation_normalizes_schema_and_target_is_never_modeled() -> Non
     assert prepared["is_fraud"].dtype == np.dtype("int8")
     assert pd.api.types.is_datetime64_any_dtype(prepared["trans_timestamp"])
 
-    schema = get_feature_schema(include_target_history=False)
+    schema = get_feature_schema()
     matrix = select_model_matrix(build_features(prepared), schema)
 
     assert matrix.columns.tolist() == list(schema.model_features)

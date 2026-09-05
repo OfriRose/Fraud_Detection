@@ -6,9 +6,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
-from pandas.api.types import is_datetime64_any_dtype
-
-_TIMESTAMP_ATTR = "_fraud_detection_timestamp_col"
 
 
 def _parse_boundary(value: Any, field_name: str) -> pd.Timestamp:
@@ -146,9 +143,7 @@ def chronological_split(df: pd.DataFrame, config: TemporalSplitConfig) -> Datase
         ) from exc
 
     def select(mask: pd.Series) -> pd.DataFrame:
-        frame = working.loc[mask].sort_values(config.timestamp_col, kind="mergesort")
-        frame.attrs[_TIMESTAMP_ATTR] = config.timestamp_col
-        return frame
+        return working.loc[mask].sort_values(config.timestamp_col, kind="mergesort")
 
     splits = DatasetSplits(
         train=select(train_mask),
@@ -167,36 +162,12 @@ def chronological_split(df: pd.DataFrame, config: TemporalSplitConfig) -> Datase
     return splits
 
 
-def _summary_timestamp_col(splits: DatasetSplits) -> str:
-    """Resolve the timestamp column, including custom split configurations."""
-    named_splits = _named_splits(splits)
-    configured_columns = {
-        frame.attrs.get(_TIMESTAMP_ATTR)
-        for _, frame in named_splits
-        if frame.attrs.get(_TIMESTAMP_ATTR) is not None
-    }
-    if len(configured_columns) == 1:
-        timestamp_col = configured_columns.pop()
-        if all(timestamp_col in frame.columns for _, frame in named_splits):
-            return timestamp_col
-
-    if all("trans_timestamp" in frame.columns for _, frame in named_splits):
-        return "trans_timestamp"
-
-    common_columns = set(named_splits[0][1].columns)
-    for _, frame in named_splits[1:]:
-        common_columns.intersection_update(frame.columns)
-    datetime_columns = [
-        column
-        for column in common_columns
-        if all(is_datetime64_any_dtype(frame[column]) for _, frame in named_splits)
-    ]
-    if len(datetime_columns) == 1:
-        return datetime_columns[0]
-    raise ValueError("unable to determine a unique timestamp column for summary")
-
-
-def summarize_splits(splits: DatasetSplits, target_col: str = "is_fraud") -> pd.DataFrame:
+def summarize_splits(
+    splits: DatasetSplits,
+    target_col: str = "is_fraud",
+    *,
+    timestamp_col: str = "trans_timestamp",
+) -> pd.DataFrame:
     """Return date ranges, transaction counts, and fraud prevalence by split."""
     if not isinstance(target_col, str) or not target_col:
         raise ValueError("target_col must be a non-empty string")
@@ -206,9 +177,12 @@ def summarize_splits(splits: DatasetSplits, target_col: str = "is_fraud") -> pd.
     if empty_splits:
         raise ValueError("cannot summarize empty partition(s): " + ", ".join(empty_splits))
 
-    timestamp_col = _summary_timestamp_col(splits)
     rows: list[dict[str, Any]] = []
     for split_name, frame in named_splits:
+        if timestamp_col not in frame.columns:
+            raise ValueError(
+                f"timestamp column {timestamp_col!r} is missing from {split_name} split"
+            )
         if target_col not in frame.columns:
             raise ValueError(f"target column {target_col!r} is missing from {split_name} split")
 

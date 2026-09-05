@@ -35,10 +35,6 @@ class DataConfig:
     source_license: str
     state: str
     year: int
-    include_target_history: bool
-    target_column: str
-    timestamp_column: str
-    entity_column: str
     train_end: datetime
     validation_end: datetime
 
@@ -203,10 +199,6 @@ def _load_data(section: dict[str, Any]) -> DataConfig:
         source_license=_non_empty_string(section, "source_license"),
         state=_non_empty_string(section, "state"),
         year=year,
-        include_target_history=_value(section, "include_target_history", bool),
-        target_column=_non_empty_string(section, "target_column"),
-        timestamp_column=_non_empty_string(section, "timestamp_column"),
-        entity_column=_non_empty_string(section, "entity_column"),
         train_end=train_end,
         validation_end=validation_end,
     )

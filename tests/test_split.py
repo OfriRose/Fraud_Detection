@@ -138,6 +138,8 @@ def test_custom_timestamp_column_is_used_by_summary() -> None:
         timestamp_col="event_time",
     )
 
-    summary = summarize_splits(chronological_split(transactions, config))
+    summary = summarize_splits(
+        chronological_split(transactions, config), timestamp_col=config.timestamp_col
+    )
 
     assert summary.loc[0, "date_start"] == pd.Timestamp("2024-01-01 12:00:00")

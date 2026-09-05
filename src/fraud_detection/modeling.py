@@ -63,7 +63,6 @@ class FeatureSchema:
     identifiers: tuple[str, ...]
     timestamps: tuple[str, ...]
     excluded: tuple[str, ...]
-    target_history_enabled: bool
 
     @property
     def model_features(self) -> tuple[str, ...]:
@@ -75,21 +74,14 @@ class FeatureSchema:
         return payload
 
 
-def get_feature_schema(include_target_history: bool = False) -> FeatureSchema:
-    numerical = BASE_NUMERICAL_FEATURES
-    excluded = EXCLUDED_FEATURES
-    if include_target_history:
-        numerical += TARGET_HISTORY_FEATURES
-    else:
-        excluded += TARGET_HISTORY_FEATURES
+def get_feature_schema() -> FeatureSchema:
     schema = FeatureSchema(
-        numerical=numerical,
+        numerical=BASE_NUMERICAL_FEATURES,
         categorical=CATEGORICAL_FEATURES,
         binary=BINARY_FEATURES,
         identifiers=IDENTIFIER_FEATURES,
         timestamps=TIMESTAMP_FEATURES,
-        excluded=excluded,
-        target_history_enabled=include_target_history,
+        excluded=EXCLUDED_FEATURES + TARGET_HISTORY_FEATURES,
     )
     if "is_fraud" in schema.model_features:
         raise AssertionError("Target must not be included in model features")
@@ -113,18 +105,7 @@ def _xgboost_estimator(
     scale_pos_weight: float,
 ) -> XGBClassifier:
     return XGBClassifier(
-        objective=model_config.objective,
-        eval_metric=model_config.eval_metric,
-        n_estimators=model_config.n_estimators,
-        learning_rate=model_config.learning_rate,
-        max_depth=model_config.max_depth,
-        min_child_weight=model_config.min_child_weight,
-        subsample=model_config.subsample,
-        colsample_bytree=model_config.colsample_bytree,
-        reg_alpha=model_config.reg_alpha,
-        reg_lambda=model_config.reg_lambda,
-        tree_method=model_config.tree_method,
-        n_jobs=model_config.n_jobs,
+        **asdict(model_config),
         random_state=seed,
         scale_pos_weight=scale_pos_weight,
         verbosity=0,
@@ -136,7 +117,7 @@ def build_candidate_pipelines(
     y_train: pd.Series,
     schema: FeatureSchema,
 ) -> dict[str, Pipeline]:
-    """Build baseline and tuned candidates with identical train-fitted preprocessing."""
+    """Build a prevalence baseline and learned candidates with shared preprocessing rules."""
 
     positives = int(y_train.sum())
     negatives = int(len(y_train) - positives)
@@ -145,19 +126,13 @@ def build_candidate_pipelines(
     scale_pos_weight = negatives / positives
 
     logistic_config = config.models.logistic_regression
-    logistic_parameters: dict[str, Any] = {
-        "solver": logistic_config.solver,
-        "C": logistic_config.C,
-        "class_weight": logistic_config.class_weight,
-        "max_iter": logistic_config.max_iter,
-        "random_state": config.project.seed,
-        "tol": 1e-3,
-    }
+    logistic_parameters = asdict(logistic_config)
+    logistic_parameters.update(random_state=config.project.seed, tol=1e-3)
     # Scikit-learn 1.8+ infers ordinary L2 regularization when `penalty` is
     # omitted. Avoid passing its deprecated spelling while retaining explicit
     # support for non-default configurations on older supported releases.
-    if logistic_config.penalty != "l2":
-        logistic_parameters["penalty"] = logistic_config.penalty
+    if logistic_config.penalty == "l2":
+        logistic_parameters.pop("penalty")
     logistic = LogisticRegression(
         **logistic_parameters,
     )
@@ -171,7 +146,6 @@ def build_candidate_pipelines(
     )
 
     estimators: dict[str, object] = {
-        "prevalence_baseline": DummyClassifier(strategy="prior"),
         "logistic_regression": logistic,
         "xgboost_conservative": _xgboost_estimator(
             conservative_xgb,
@@ -184,14 +158,19 @@ def build_candidate_pipelines(
             scale_pos_weight=scale_pos_weight,
         ),
     }
-    return {
-        name: build_pipeline(
-            estimator,
-            numerical_features=schema.numerical,
-            categorical_features=schema.categorical,
-        )
-        for name, estimator in estimators.items()
-    }
+    # The prior baseline ignores features; avoid fitting unused transformations.
+    candidates = {"prevalence_baseline": Pipeline([("model", DummyClassifier(strategy="prior"))])}
+    candidates.update(
+        {
+            name: build_pipeline(
+                estimator,
+                numerical_features=schema.numerical,
+                categorical_features=schema.categorical,
+            )
+            for name, estimator in estimators.items()
+        }
+    )
+    return candidates
 
 
 def public_model_parameters(pipeline: Pipeline) -> dict[str, Any]:

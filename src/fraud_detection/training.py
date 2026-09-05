@@ -24,6 +24,8 @@ from sklearn.pipeline import Pipeline
 from fraud_detection.config import DEFAULT_CONFIG_PATH, TrainingConfig, load_config
 from fraud_detection.data import (
     MODEL_EXCLUDED_PRECONSOLIDATED_COLUMNS,
+    TARGET_COLUMN,
+    TIMESTAMP_COLUMN,
     load_transactions,
     prepare_transactions,
 )
@@ -203,14 +205,14 @@ def _numeric_drift(
 
 def _feature_importance(pipeline: Pipeline) -> pd.DataFrame:
     estimator = pipeline.named_steps["model"]
-    preprocessor = pipeline.named_steps["preprocessor"]
-    names = np.asarray(preprocessor.get_feature_names_out(), dtype=object)
     if hasattr(estimator, "feature_importances_"):
         importance = np.asarray(estimator.feature_importances_, dtype=float)
     elif hasattr(estimator, "coef_"):
         importance = np.abs(np.asarray(estimator.coef_, dtype=float)).reshape(-1)
     else:
         return pd.DataFrame(columns=["feature", "importance"])
+    preprocessor = pipeline.named_steps["preprocessor"]
+    names = np.asarray(preprocessor.get_feature_names_out(), dtype=object)
     if len(names) != len(importance):
         raise AssertionError("Feature-importance length does not match transformed schema")
     return (
@@ -228,7 +230,6 @@ def _render_evaluation_report(
     validation_metrics: dict[str, Any],
     test_metrics: dict[str, Any],
     config: TrainingConfig,
-    target_history_enabled: bool,
 ) -> str:
     cost_formula = (
         f"false negatives × ${config.threshold.false_negative_cost:,.2f} + "
@@ -309,10 +310,9 @@ while reviewing at most {config.threshold.max_review_rate:.1%} of transactions.
 Precision 95% Wilson interval: {test_metrics["precision_wilson_95"]}.
 Recall 95% Wilson interval: {test_metrics["recall_wilson_95"]}.
 
-Target-derived history enabled in the model: `{target_history_enabled}`. The
-corrected `CC_PREV_FRAUD` and fraud-rate features are generated and regression
-tested, but are disabled by default because no label-availability timestamp is
-present in the source data.
+Target-derived history and card-prefix features are not generated or modeled.
+Fraud labels have no availability timestamp, so prior labels cannot safely be
+assumed observable at scoring time.
 
 Feature importance is associative, not causal. Cost values are scenario
 estimates under fixed assumptions, not observed business savings.
@@ -327,13 +327,6 @@ def run_training(
 ) -> dict[str, Any]:
     """Run the finalized methodology and evaluate test exactly once."""
 
-    if (
-        config.data.target_column != "is_fraud"
-        or config.data.timestamp_column != "trans_timestamp"
-        or config.data.entity_column != "cc_num"
-    ):
-        raise ValueError("This release requires canonical is_fraud/trans_timestamp/cc_num names")
-
     source_path = Path(input_path) if input_path is not None else config.data.input_path
     if transactions is None:
         raw = load_transactions(source_path, state=config.data.state, year=config.data.year)
@@ -343,19 +336,21 @@ def run_training(
             state=config.data.state,
             year=config.data.year,
         )
-    featured = build_features(raw, target_col=config.data.target_column)
-    if featured.loc[:, featured.columns != config.data.target_column].isna().all(axis=1).any():
+    featured = build_features(raw)
+    if featured.loc[:, featured.columns != TARGET_COLUMN].isna().all(axis=1).any():
         raise AssertionError("Feature generation created an unusable all-missing row")
 
     split_config = TemporalSplitConfig(
         train_end=config.data.train_end,
         validation_end=config.data.validation_end,
-        timestamp_col=config.data.timestamp_column,
+        timestamp_col=TIMESTAMP_COLUMN,
     )
     splits = chronological_split(featured, split_config)
-    split_summary = summarize_splits(splits, target_col=config.data.target_column)
+    split_summary = summarize_splits(
+        splits, target_col=TARGET_COLUMN, timestamp_col=TIMESTAMP_COLUMN
+    )
 
-    schema = get_feature_schema(config.data.include_target_history)
+    schema = get_feature_schema()
     X_train = select_model_matrix(splits.train, schema)
     X_validation = select_model_matrix(splits.validation, schema)
     X_test = select_model_matrix(splits.test, schema)
@@ -364,14 +359,14 @@ def run_training(
         (X_validation, splits.validation),
         (X_test, splits.test),
     ):
-        matrix.attrs["date_start"] = frame[config.data.timestamp_column].min()
-        matrix.attrs["date_end"] = frame[config.data.timestamp_column].max()
-        if config.data.target_column in matrix:
+        matrix.attrs["date_start"] = frame[TIMESTAMP_COLUMN].min()
+        matrix.attrs["date_end"] = frame[TIMESTAMP_COLUMN].max()
+        if TARGET_COLUMN in matrix:
             raise AssertionError("Target leaked into a model matrix")
 
-    y_train = splits.train[config.data.target_column]
-    y_validation = splits.validation[config.data.target_column]
-    y_test = splits.test[config.data.target_column]
+    y_train = splits.train[TARGET_COLUMN]
+    y_validation = splits.validation[TARGET_COLUMN]
+    y_test = splits.test[TARGET_COLUMN]
 
     candidates = build_candidate_pipelines(config, y_train, schema)
     comparison, fitted, validation_probabilities, thresholds = _model_comparison(
@@ -421,7 +416,7 @@ def run_training(
     _numeric_drift(splits.train, splits.test, schema).to_csv(
         report_dir / "train_test_drift.csv", index=False
     )
-    test_month = splits.test[config.data.timestamp_column].dt.to_period("M").astype("string")
+    test_month = splits.test[TIMESTAMP_COLUMN].dt.to_period("M").astype("string")
     slice_metrics(
         y_test,
         test_probabilities,
@@ -467,11 +462,7 @@ def run_training(
         "selected_threshold": locked_threshold,
         "selection_metric": "validation_pr_auc",
         "feature_schema": schema.to_dict(),
-        "target_history_policy": (
-            "enabled; assumes prior labels are available immediately"
-            if schema.target_history_enabled
-            else "disabled because label-availability timestamps are absent"
-        ),
+        "target_history_policy": "excluded because label-availability timestamps are absent",
         "cost_assumptions": asdict(config.threshold),
         "data": source_metadata,
         "random_seed": config.project.seed,
@@ -514,7 +505,6 @@ def run_training(
             validation_metrics=validation_metrics,
             test_metrics=test_metrics,
             config=config,
-            target_history_enabled=schema.target_history_enabled,
         ),
         encoding="utf-8",
     )

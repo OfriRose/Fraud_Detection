@@ -16,7 +16,7 @@ presentation, or interview narrative.
 - Slide 15: remove “could save millions,” “manageable alert queue,”
   “production-ready,” “robustly generalizes,” and “deploying immediately.”
 - Slide 8: remove nonexistent `ZIP_FRAUD_RATE` and clarify that
-  `CC_PREV_FRAUD` is corrected but excluded without label-availability data.
+  `CC_PREV_FRAUD` is excluded without label-availability data.
 - Slide 3: correct the statement that raw SSN was immediately dropped; the
   surviving prepared pickle retains SSN and other PII-shaped identifiers.
 - Any repository, slide, or résumé wording that calls this a verified
@@ -38,15 +38,8 @@ Use wording such as:
 > claims.
 
 If exact results are appropriate, label them as the corrected CA/2020
-experiment:
-
-- Validation PR-AUC 0.9799; validation precision 52.44% and recall 98.93% at
-  the validation-locked threshold.
-- Test PR-AUC 0.9543; test precision 18.19% and recall 99.18%.
-- Test confusion counts: TP 1,454, FN 12, FP 6,540, TN 443,131.
-- Test review load 1.77%, below the 5% validation capacity target. This does
-  not establish production readiness because evaluation covers one state and
-  year from a dataset with undocumented collection or simulation methodology.
+experiment and take them from the [generated evaluation report](../reports/evaluation.md).
+The [operational evaluation](operational_evaluation.md) explains their limits.
 
 Do not call the model production-ready or describe the cost scenario as
 realized savings.

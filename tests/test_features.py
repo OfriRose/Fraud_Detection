@@ -9,7 +9,6 @@ from fraud_detection.features import (
     ENGINEERED_FEATURE_COLUMNS,
     VELOCITY_FEATURE_COLUMNS,
     build_features,
-    extract_cc_bin,
 )
 
 
@@ -40,60 +39,7 @@ def _transactions(
     return frame
 
 
-def test_extract_cc_bin_handles_boundaries_separators_and_missing() -> None:
-    cards = pd.Series(
-        [
-            "123456",
-            "1234567",
-            "12345",
-            "1234-56 7890",
-            987654321,
-            None,
-            pd.NA,
-            "12345x678",
-            "--  --",
-        ],
-        index=list("abcdefghi"),
-        name="card",
-        dtype="object",
-    )
-
-    actual = extract_cc_bin(cards)
-
-    expected = pd.Series(
-        [
-            "123456",
-            "123456",
-            pd.NA,
-            "123456",
-            "987654",
-            pd.NA,
-            pd.NA,
-            pd.NA,
-            pd.NA,
-        ],
-        index=cards.index,
-        name="card",
-        dtype="string",
-    )
-    pdt.assert_series_equal(actual, expected)
-    assert isinstance(actual.dtype, pd.StringDtype)
-
-
-def test_extract_cc_bin_accepts_integer_valued_float_series() -> None:
-    # Pandas promotes an integer column containing a missing value to float.
-    cards = pd.Series([123456.0, 12345.0, np.nan])
-    expected = pd.Series(["123456", pd.NA, pd.NA], dtype="string")
-    pdt.assert_series_equal(extract_cc_bin(cards), expected)
-
-
-@pytest.mark.parametrize("digits", [0, -1, 1.5, True])
-def test_extract_cc_bin_rejects_invalid_width(digits: object) -> None:
-    with pytest.raises(ValueError, match="positive integer"):
-        extract_cc_bin(pd.Series(["123456"]), digits=digits)  # type: ignore[arg-type]
-
-
-def test_cc_previous_fraud_is_hand_verified_per_card_and_strictly_past() -> None:
+def test_previous_transaction_history_is_hand_verified_per_card_and_strictly_past() -> None:
     raw = _transactions(
         cards=[
             4000001111111111,
@@ -118,9 +64,7 @@ def test_cc_previous_fraud_is_hand_verified_per_card_and_strictly_past() -> None
     featured = build_features(raw)
 
     # Card 4 history in chronological order is 0, 1, 2; card 5 is 0, 1.
-    assert featured["CC_PREV_FRAUD"].tolist() == [2, 0, 0, 1, 1]
     assert featured["PREV_TX_COUNT"].tolist() == [2, 0, 0, 1, 1]
-    assert featured["CC_HIST_FRAUD_RATE"].tolist() == [1.0, 0.0, 0.0, 1.0, 1.0]
     assert featured.index.tolist() == raw.index.tolist()
     pdt.assert_frame_equal(raw, original)
 
@@ -143,7 +87,6 @@ def test_equal_timestamp_transactions_do_not_see_each_other() -> None:
     first_bucket = featured.iloc[:2]
     assert first_bucket["PREV_TX_COUNT"].tolist() == [0, 0]
     assert first_bucket["PREV_CUMULATIVE_AMT"].tolist() == [0.0, 0.0]
-    assert first_bucket["CC_PREV_FRAUD"].tolist() == [0, 0]
     assert first_bucket["IS_FIRST_CARD_TX"].tolist() == [1, 1]
     assert first_bucket["AMT_VS_PREV_MEAN"].tolist() == [0.0, 0.0]
 
@@ -152,8 +95,6 @@ def test_equal_timestamp_transactions_do_not_see_each_other() -> None:
     assert second_bucket["PREV_CUMULATIVE_AMT"].tolist() == [40.0, 40.0]
     assert second_bucket["PREV_MEAN_AMT"].tolist() == [20.0, 20.0]
     assert second_bucket["PREV_STD_AMT"].tolist() == pytest.approx([np.sqrt(200.0), np.sqrt(200.0)])
-    assert second_bucket["CC_PREV_FRAUD"].tolist() == [1, 1]
-    assert second_bucket["CC_HIST_FRAUD_RATE"].tolist() == [0.5, 0.5]
     assert second_bucket["TIME_SINCE_LAST_TX"].tolist() == [3600.0, 3600.0]
     assert second_bucket["IS_FIRST_CARD_TX"].tolist() == [0, 0]
     assert second_bucket["AMT_VS_PREV_MEAN"].tolist() == [1.0, 5.0]
@@ -235,7 +176,7 @@ def test_unsorted_input_is_restored_and_history_uses_chronology() -> None:
     assert featured["AMT_VS_PREV_MEAN"].tolist() == [4.0, 0.0, 2.0]
 
 
-def test_missing_target_is_unknown_and_numeric_features_are_complete() -> None:
+def test_missing_target_does_not_prevent_complete_numeric_features() -> None:
     raw = _transactions(
         cards=[4111111111111111, 4111111111111111, 4111111111111111],
         timestamps=[
@@ -249,14 +190,12 @@ def test_missing_target_is_unknown_and_numeric_features_are_complete() -> None:
 
     featured = build_features(raw)
 
-    assert featured["CC_PREV_FRAUD"].tolist() == [0, 0, 0]
-    assert featured["CC_HIST_FRAUD_RATE"].tolist() == [0.0, 0.0, 0.0]
     assert featured["AMT_VS_PREV_MEAN"].tolist() == [0.0, 0.0, 0.0]
-    numeric_features = [column for column in ENGINEERED_FEATURE_COLUMNS if column != "CC_BIN"]
+    numeric_features = list(ENGINEERED_FEATURE_COLUMNS)
     assert np.isfinite(featured.loc[:, numeric_features].to_numpy(dtype=np.float64)).all()
 
 
-def test_partial_unknown_target_contributes_zero() -> None:
+def test_labels_cannot_change_engineered_features() -> None:
     raw = _transactions(
         cards=[4111111111111111] * 3,
         timestamps=[
@@ -268,10 +207,14 @@ def test_partial_unknown_target_contributes_zero() -> None:
         fraud=[1, pd.NA, 0],
     )
 
-    featured = build_features(raw)
-
-    assert featured["CC_PREV_FRAUD"].tolist() == [0, 1, 1]
-    assert featured["CC_HIST_FRAUD_RATE"].tolist() == [0.0, 1.0, 0.5]
+    baseline = build_features(raw).loc[:, ENGINEERED_FEATURE_COLUMNS]
+    for labels in ([0, 0, 0], [1, 1, 1], [pd.NA, pd.NA, pd.NA]):
+        changed = raw.assign(is_fraud=labels)
+        pdt.assert_frame_equal(baseline, build_features(changed).loc[:, ENGINEERED_FEATURE_COLUMNS])
+    pdt.assert_frame_equal(
+        baseline, build_features(raw.drop(columns="is_fraud")).loc[:, ENGINEERED_FEATURE_COLUMNS]
+    )
+    assert {"CC_BIN", "CC_PREV_FRAUD", "CC_HIST_FRAUD_RATE"}.isdisjoint(build_features(raw).columns)
 
 
 def test_static_features_are_transaction_time_specific() -> None:
@@ -285,7 +228,6 @@ def test_static_features_are_transaction_time_specific() -> None:
 
     featured = build_features(raw)
 
-    assert featured.loc[0, "CC_BIN"] == "411111"
     assert featured.loc[0, "TX_HOUR"] == 23
     assert featured.loc[0, "TX_DAY_OF_WEEK"] == 6
     assert featured.loc[0, "TX_MONTH"] == 6
